@@ -99,7 +99,7 @@ export default function AdminPage() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {users.map((u) => {
-                  const isAdminUser = u.telegramChatId === '1690543934' || u.role === 'ADMIN';
+                  const isAdminUser = u.role === 'ADMIN';
                   return (
                     <tr key={u.id} className="hover:bg-gray-50/50 transition-colors">
                       <td className="px-6 py-4">
@@ -128,7 +128,7 @@ export default function AdminPage() {
                         )}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        {u.telegramChatId !== '1690543934' ? (
+                        {u.role !== 'ADMIN' ? (
                           <button
                             disabled={deletingId === u.id}
                             onClick={() => handleDeleteUser(u.id, u.name)}
@@ -150,7 +150,7 @@ export default function AdminPage() {
           {/* Mobile Card View */}
           <div className="grid grid-cols-1 gap-4 md:hidden">
             {users.map((u) => {
-              const isAdminUser = u.telegramChatId === '1690543934' || u.role === 'ADMIN';
+              const isAdminUser = u.role === 'ADMIN';
               return (
                 <div key={u.id} className="card p-5 space-y-4">
                   <div className="flex justify-between items-start">
@@ -184,7 +184,7 @@ export default function AdminPage() {
                     )}
                   </div>
 
-                  {u.telegramChatId !== '1690543934' && (
+                  {u.role !== 'ADMIN' && (
                     <div className="pt-2 border-t border-gray-50 flex justify-end">
                       <button
                         disabled={deletingId === u.id}

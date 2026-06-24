@@ -11,13 +11,13 @@ let bot: Telegraf | null = null;
 
 function isAdmin(ctx: Context): boolean {
   const chatId = ctx.chat?.id?.toString();
-  return chatId === '1690543934';
+  return !!(env.telegram.adminTelegramChatId && chatId === env.telegram.adminTelegramChatId);
 }
 
 async function isAuthorized(ctx: Context): Promise<boolean> {
   const chatId = ctx.chat?.id?.toString();
   if (!chatId) return false;
-  if (chatId === '1690543934') return true;
+  if (env.telegram.adminTelegramChatId && chatId === env.telegram.adminTelegramChatId) return true;
   if (env.telegram.allowedChatIds.includes(chatId)) return true;
 
   // Check in database for linked accounts
@@ -175,7 +175,7 @@ async function doManageUsers(ctx: Context): Promise<void> {
     await ctx.reply('System Users (Manage accounts):', adminKeyboard);
 
     for (const u of users) {
-      const isUserAdmin = u.telegramChatId === '1690543934' || u.role === 'ADMIN';
+      const isUserAdmin = u.role === 'ADMIN';
       const roleText = isUserAdmin ? 'Admin' : 'User';
       const tgText = u.telegramChatId ? u.telegramChatId : 'Not linked';
 
@@ -185,8 +185,8 @@ async function doManageUsers(ctx: Context): Promise<void> {
         `Role: ${roleText}\n` +
         `Telegram ID: ${tgText}`;
 
-      // Only show remove button if user is not the main admin
-      if (u.telegramChatId !== '1690543934') {
+      // Only show remove button if user is not an admin
+      if (u.role !== 'ADMIN') {
         const deleteButton = Markup.inlineKeyboard([
           Markup.button.callback(`Remove ${u.name}`, `deluser:${u.id}`)
         ]);
@@ -263,7 +263,7 @@ export function startTelegramBot(): void {
         return;
       }
 
-      if (user.telegramChatId === '1690543934') {
+      if (user.role === 'ADMIN') {
         await ctx.reply('Cannot delete the administrator.');
         return;
       }

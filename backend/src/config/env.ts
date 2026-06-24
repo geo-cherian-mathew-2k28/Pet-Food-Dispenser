@@ -44,6 +44,7 @@ export const env = {
   telegram: {
     botToken: optional('TELEGRAM_BOT_TOKEN', ''),
     allowedChatIds: optional('TELEGRAM_ALLOWED_CHAT_IDS', '').split(',').filter(Boolean),
+    adminTelegramChatId: optional('ADMIN_TELEGRAM_CHAT_ID', ''),
   },
 
   // Safety

@@ -134,8 +134,8 @@ authRouter.put('/profile', authenticate, async (req: Request, res: Response, nex
       return;
     }
 
-    // Determine role update (if telegram ID matches the admin chat ID 1690543934, elevate to ADMIN)
-    const isNewAdmin = telegramChatId === '1690543934';
+    // Determine role update (if telegram ID matches the admin chat ID, elevate to ADMIN)
+    const isNewAdmin = env.telegram.adminTelegramChatId && telegramChatId === env.telegram.adminTelegramChatId;
     const newRole = isNewAdmin ? 'ADMIN' : undefined;
 
     const updatedUser = await prisma.user.update({

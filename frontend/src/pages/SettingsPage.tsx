@@ -143,7 +143,7 @@ export default function SettingsPage() {
                 <input
                   className="input font-mono text-sm"
                   type="text"
-                  placeholder="e.g. 1690543934"
+                  placeholder="e.g. 123456789"
                   value={telegramChatId}
                   onChange={(e) => setTelegramChatId(e.target.value)}
                 />
