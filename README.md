@@ -1,4 +1,4 @@
-# SmartCat Feeder 🐱
+# feedy
 
 > An automatic IoT cat food dispenser built with Arduino UNO R4 WiFi, MQTT, Node.js, React, and a Telegram bot — using 100% free tools and DIY cardboard hardware.
 
@@ -8,15 +8,15 @@
 
 ## Features
 
-- 🍽️ **Feed Now** from web dashboard with one click
-- ⏰ **Scheduled feeding** with day-of-week and time configuration
-- 📱 **Telegram bot** for remote control: `/feed`, `/status`, `/history`
-- 📡 **MQTT device communication** over TLS (HiveMQ Cloud free tier)
-- 🔴🟢 **Real-time device status** via 30-second heartbeat
-- 📊 **Feed history** with charts, filters, and export
-- 🔐 **JWT login system** with bcrypt password hashing
-- 🛡️ **Safety limits**: cooldown between feeds, max daily feeds
-- 🧱 **Cardboard dispenser** built from free/cheap materials
+- **Feed Now** from web dashboard with one click (no emojis)
+- **Scheduled feeding** with day-of-week and time configuration
+- **Telegram bot** for remote control: `/feed`, `/status`, `/history`, and admin commands
+- **MQTT device communication** over TLS (HiveMQ Cloud free tier)
+- **Real-time device status** via 30-second heartbeat
+- **Feed history** with charts, mobile card view, filters, and export
+- **JWT login system** with bcrypt password hashing
+- **Safety limits**: cooldown between feeds, dynamic max daily feeds (configurable via Telegram by admin)
+- **Cardboard dispenser** built from free/cheap materials
 
 ---
 
