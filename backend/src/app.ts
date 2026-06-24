@@ -16,7 +16,25 @@ const app = express();
 
 // ── Security & parsing middleware ──────────────────────────────────────────────
 app.use(helmet());
-app.use(cors({ origin: env.frontendUrl, credentials: true }));
+
+const allowedOrigins = [
+  env.frontendUrl,
+  env.frontendUrl.replace(/\/$/, '')
+];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    const normalizedOrigin = origin.replace(/\/$/, '');
+    const isAllowed = allowedOrigins.some(o => o.replace(/\/$/, '') === normalizedOrigin) || normalizedOrigin === 'http://localhost:5173';
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      callback(null, false); // Fail silently or reject
+    }
+  },
+  credentials: true
+}));
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true }));
 
