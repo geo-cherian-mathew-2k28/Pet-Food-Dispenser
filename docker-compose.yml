@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  # ── Local PostgreSQL (replaces Supabase for offline dev) ──
+  postgres:
+    image: postgres:16-alpine
+    container_name: smartcat-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: smartcat
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # ── Local Mosquitto MQTT Broker (replaces HiveMQ for offline dev) ──
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: smartcat-mqtt
+    restart: unless-stopped
+    ports:
+      - '1883:1883'  # MQTT
+      - '9001:9001'  # WebSocket (optional)
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+    command: mosquitto -c /mosquitto/config/mosquitto.conf
+
+volumes:
+  postgres_data:

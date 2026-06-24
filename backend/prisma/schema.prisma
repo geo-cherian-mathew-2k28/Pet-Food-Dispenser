@@ -1,0 +1,92 @@
+// SmartCat Feeder - Prisma Schema
+// Database: PostgreSQL (Supabase free tier)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── User ────────────────────────────────────────────────────────────────────
+model User {
+  id             String    @id @default(cuid())
+  name           String
+  email          String    @unique
+  passwordHash   String
+  role           Role      @default(USER)
+  telegramChatId String?   // optional: link a Telegram chat ID to this account
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  feedLogs  FeedLog[]
+  schedules Schedule[]
+}
+
+// ─── FeedLog ─────────────────────────────────────────────────────────────────
+model FeedLog {
+  id          String       @id @default(cuid())
+  source      FeedSource   // WEB | TELEGRAM | SCHEDULE
+  status      FeedStatus   @default(PENDING)
+  portion     Int          @default(1)
+  userId      String?      // nullable for schedule/system-triggered feeds
+  userName    String       // display name
+  requestId   String       @unique // correlates MQTT command with response
+  message     String?      // success message or error detail
+  createdAt   DateTime     @default(now())
+  completedAt DateTime?    // set when Arduino responds
+
+  user User? @relation(fields: [userId], references: [id])
+}
+
+// ─── Schedule ─────────────────────────────────────────────────────────────────
+model Schedule {
+  id         String   @id @default(cuid())
+  userId     String
+  name       String
+  time       String   // HH:MM (24-hour format, e.g. "08:00")
+  portion    Int      @default(1)
+  enabled    Boolean  @default(true)
+  daysOfWeek String   // comma-separated: "1,2,3,4,5" (Mon-Fri), "0,6" (Sat,Sun), "0,1,2,3,4,5,6" (all)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+// ─── DeviceStatus ─────────────────────────────────────────────────────────────
+model DeviceStatus {
+  id                  String       @id @default(cuid())
+  status              DeviceState  @default(OFFLINE)
+  lastHeartbeatAt     DateTime?
+  uptimeSeconds       Int?
+  wifiStrength        Int?         // RSSI value
+  lastMessage         String?
+  servoOpenDurationMs Int          @default(1500)
+  updatedAt           DateTime     @updatedAt @default(now())
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+enum Role {
+  ADMIN
+  USER
+}
+
+enum FeedSource {
+  WEB
+  TELEGRAM
+  SCHEDULE
+}
+
+enum FeedStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum DeviceState {
+  ONLINE
+  OFFLINE
+}
