@@ -65,6 +65,7 @@ model DeviceStatus {
   wifiStrength        Int?         // RSSI value
   lastMessage         String?
   servoOpenDurationMs Int          @default(1500)
+  maxFeedsPerDay      Int          @default(10)
   updatedAt           DateTime     @updatedAt @default(now())
 }
 

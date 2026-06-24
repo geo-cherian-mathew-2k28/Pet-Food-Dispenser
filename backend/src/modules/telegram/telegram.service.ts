@@ -147,7 +147,9 @@ async function doToday(ctx: Context): Promise<void> {
     const count = await prisma.feedLog.count({
       where: { createdAt: { gte: todayStart }, status: 'SUCCESS' },
     });
-    await ctx.reply(`Today's successful feeds: ${count} / ${env.maxFeedsPerDay}`, keyboard);
+    const device = await prisma.deviceStatus.findUnique({ where: { id: 'device-1' } });
+    const maxFeeds = device?.maxFeedsPerDay ?? env.maxFeedsPerDay;
+    await ctx.reply(`Today's successful feeds: ${count} / ${maxFeeds}`, keyboard);
   } catch (_err) {
     await ctx.reply("Failed to get today's feed count.", keyboard);
   }
@@ -217,6 +219,7 @@ export function startTelegramBot(): void {
     { command: 'history', description: 'Show last 5 feedings' },
     { command: 'today', description: "Show today's successful feed count" },
     { command: 'users', description: 'Manage system users (Admin)' },
+    { command: 'setlimit', description: 'Set daily feed limit (Admin)' },
     { command: 'start', description: 'Welcome message' },
     { command: 'help', description: 'Show command list' }
   ]).catch(err => logger.error('Failed to set Telegram commands:', err));
@@ -350,6 +353,36 @@ export function startTelegramBot(): void {
   bot.command('users', async (ctx) => {
     if (!(await isAuthorized(ctx))) return denyAccess(ctx);
     await doManageUsers(ctx);
+  });
+
+  // ── /setlimit /limit ──────────────────────────────────────────────────────
+  bot.command(['setlimit', 'limit'], async (ctx) => {
+    if (!isAdmin(ctx)) {
+      await ctx.reply('Access denied. Administrator privileges required.');
+      return;
+    }
+    const messageText = ctx.message.text.trim();
+    const args = messageText.split(/\s+/).slice(1);
+    if (args.length === 0 || isNaN(Number(args[0]))) {
+      await ctx.reply('Please specify a valid daily feed limit, e.g. /setlimit 5');
+      return;
+    }
+    const limitVal = parseInt(args[0], 10);
+    if (limitVal <= 0 || limitVal > 100) {
+      await ctx.reply('Please specify a limit between 1 and 100.');
+      return;
+    }
+    try {
+      await prisma.deviceStatus.upsert({
+        where: { id: 'device-1' },
+        update: { maxFeedsPerDay: limitVal },
+        create: { id: 'device-1', status: 'OFFLINE', maxFeedsPerDay: limitVal },
+      });
+      await ctx.reply(`Daily feed limit has been updated to ${limitVal} feeds per day.`);
+    } catch (err) {
+      logger.error('Failed to update maxFeedsPerDay:', err);
+      await ctx.reply('Failed to update the daily feed limit in the database.');
+    }
   });
 
   // ── Keyboard button + free-text handler ───────────────────────────────────

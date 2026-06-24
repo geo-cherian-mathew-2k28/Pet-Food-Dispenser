@@ -34,6 +34,11 @@ export async function triggerFeed(req: FeedRequest): Promise<FeedResult> {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
+  const device = await prisma.deviceStatus.findUnique({
+    where: { id: 'device-1' },
+  });
+  const maxFeeds = device?.maxFeedsPerDay ?? env.maxFeedsPerDay;
+
   const todayFeedCount = await prisma.feedLog.count({
     where: {
       createdAt: { gte: todayStart },
@@ -41,8 +46,8 @@ export async function triggerFeed(req: FeedRequest): Promise<FeedResult> {
     },
   });
 
-  if (todayFeedCount >= env.maxFeedsPerDay) {
-    logger.warn(`Feed rejected: daily limit of ${env.maxFeedsPerDay} reached`);
+  if (todayFeedCount >= maxFeeds) {
+    logger.warn(`Feed rejected: daily limit of ${maxFeeds} reached`);
 
     // Log the rejected attempt
     await prisma.feedLog.create({
@@ -53,14 +58,14 @@ export async function triggerFeed(req: FeedRequest): Promise<FeedResult> {
         userId,
         userName,
         requestId,
-        message: `Daily feed limit of ${env.maxFeedsPerDay} reached`,
+        message: `Daily feed limit of ${maxFeeds} reached`,
         completedAt: new Date(),
       },
     });
 
     return {
       success: false,
-      message: `Daily feed limit of ${env.maxFeedsPerDay} reached. Try again tomorrow.`,
+      message: `Daily feed limit of ${maxFeeds} reached. Try again tomorrow.`,
       requestId,
     };
   }

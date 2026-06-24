@@ -32,7 +32,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <div className="flex items-center gap-3 px-6 py-5 border-b border-gray-100">
           <Cat className="w-8 h-8 text-cat-500" />
           <div>
-            <p className="font-bold text-gray-900 text-base leading-tight">SmartCat Feeder</p>
+            <p className="font-bold text-gray-900 text-base leading-tight">feedy</p>
             <p className="text-xs text-gray-400">IoT Dashboard</p>
           </div>
         </div>
@@ -93,7 +93,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <div className="flex items-center gap-3 px-6 py-5 border-b border-gray-100">
           <Cat className="w-8 h-8 text-cat-500" />
           <div>
-            <p className="font-bold text-gray-900">SmartCat Feeder</p>
+            <p className="font-bold text-gray-900">feedy</p>
             <p className="text-xs text-gray-400">IoT Dashboard</p>
           </div>
           <button onClick={() => setSidebarOpen(false)} className="ml-auto text-gray-400 hover:text-gray-600">
@@ -133,7 +133,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <Menu className="w-6 h-6" />
             </button>
             <Cat className="w-6 h-6 text-cat-500" />
-            <span className="font-bold text-gray-900">SmartCat Feeder</span>
+            <span className="font-bold text-gray-900">feedy</span>
           </div>
         </header>
 

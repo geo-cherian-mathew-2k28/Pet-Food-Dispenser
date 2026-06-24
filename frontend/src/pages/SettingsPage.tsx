@@ -6,7 +6,7 @@ import api from '../lib/api';
 import type { DeviceStatus } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { 
-  CheckCircle2, XCircle, Loader2, Settings, User, Cpu, Server, AlertCircle, RefreshCw 
+  CheckCircle2, XCircle, Loader2, Settings, User, Cpu, Server, AlertCircle, RefreshCw, ExternalLink, Copy
 } from 'lucide-react';
 
 export default function SettingsPage() {
@@ -147,9 +147,34 @@ export default function SettingsPage() {
                   value={telegramChatId}
                   onChange={(e) => setTelegramChatId(e.target.value)}
                 />
-                <p className="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
-                  To link Telegram: Send <code className="font-semibold text-cat-600 bg-gray-50 px-1 py-0.5 rounded border border-gray-150">/start</code> to your bot to view your ID, and enter it above.
-                </p>
+                <div className="mt-2.5 p-3 bg-gray-50 rounded-xl border border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-gray-400">
+                  <div className="leading-relaxed">
+                    Link Bot: Send <code className="font-semibold text-cat-600 bg-white px-1 py-0.5 rounded border border-gray-150">/start</code> to the bot to get your ID.
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                    <a
+                      href="https://t.me/Snowbell_Feeder_Bot"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-cat-600 hover:text-cat-700 font-semibold flex items-center gap-1 hover:underline"
+                    >
+                      <span>Go to Bot</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                    <span className="text-gray-200">|</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText('https://t.me/Snowbell_Feeder_Bot');
+                        alert('Telegram link copied to clipboard!');
+                      }}
+                      className="text-gray-500 hover:text-cat-600 font-semibold flex items-center gap-1 transition-colors"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copy Link</span>
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <button

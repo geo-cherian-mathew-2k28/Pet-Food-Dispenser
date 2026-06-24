@@ -189,35 +189,62 @@ export default function HistoryPage() {
         ) : feeds.length === 0 ? (
           <div className="text-center text-gray-400 py-16">No records found.</div>
         ) : (
-          <table className="w-full text-sm text-left border-collapse">
-            <thead>
-              <tr className="border-b border-gray-100 bg-gray-50/75">
-                <th className="px-5 py-3.5 text-gray-500 font-semibold">Date & Time</th>
-                <th className="px-5 py-3.5 text-gray-500 font-semibold">Source</th>
-                <th className="px-5 py-3.5 text-gray-500 font-semibold">User</th>
-                <th className="px-5 py-3.5 text-gray-500 font-semibold">Portion</th>
-                <th className="px-5 py-3.5 text-gray-500 font-semibold">Status</th>
-                <th className="px-5 py-3.5 text-gray-500 font-semibold">Message</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {feeds.map((feed) => (
-                <tr
-                  key={feed.id}
-                  className="hover:bg-gray-50/20 transition-colors"
-                >
-                  <td className="px-5 py-3.5 whitespace-nowrap text-gray-700 font-medium">
-                    {new Date(feed.createdAt).toLocaleString()}
-                  </td>
-                  <td className="px-5 py-3.5"><SourceBadge source={feed.source} /></td>
-                  <td className="px-5 py-3.5 text-gray-700 font-medium">{feed.userName}</td>
-                  <td className="px-5 py-3.5 text-gray-700 font-mono font-medium">{feed.portion}</td>
-                  <td className="px-5 py-3.5"><StatusBadge status={feed.status} /></td>
-                  <td className="px-5 py-3.5 text-gray-500 max-w-xs truncate">{feed.message || '—'}</td>
+          <>
+            {/* Desktop Table View */}
+            <table className="hidden md:table w-full text-sm text-left border-collapse">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50/75">
+                  <th className="px-5 py-3.5 text-gray-500 font-semibold">Date & Time</th>
+                  <th className="px-5 py-3.5 text-gray-500 font-semibold">Source</th>
+                  <th className="px-5 py-3.5 text-gray-500 font-semibold">User</th>
+                  <th className="px-5 py-3.5 text-gray-500 font-semibold">Portion</th>
+                  <th className="px-5 py-3.5 text-gray-500 font-semibold">Status</th>
+                  <th className="px-5 py-3.5 text-gray-500 font-semibold">Message</th>
                 </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {feeds.map((feed) => (
+                  <tr
+                    key={feed.id}
+                    className="hover:bg-gray-50/20 transition-colors"
+                  >
+                    <td className="px-5 py-3.5 whitespace-nowrap text-gray-700 font-medium">
+                      {new Date(feed.createdAt).toLocaleString()}
+                    </td>
+                    <td className="px-5 py-3.5"><SourceBadge source={feed.source} /></td>
+                    <td className="px-5 py-3.5 text-gray-700 font-medium">{feed.userName}</td>
+                    <td className="px-5 py-3.5 text-gray-700 font-mono font-medium">{feed.portion}</td>
+                    <td className="px-5 py-3.5"><StatusBadge status={feed.status} /></td>
+                    <td className="px-5 py-3.5 text-gray-500 max-w-xs truncate">{feed.message || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Mobile Card List View */}
+            <div className="md:hidden divide-y divide-gray-100">
+              {feeds.map((feed) => (
+                <div key={feed.id} className="p-4 space-y-2.5">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-semibold text-gray-500">
+                      {new Date(feed.createdAt).toLocaleString()}
+                    </span>
+                    <StatusBadge status={feed.status} />
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="font-semibold text-gray-900">{feed.userName}</span>
+                    <span className="text-gray-500 font-medium text-xs">Portion: {feed.portion}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <SourceBadge source={feed.source} />
+                    <span className="text-gray-400 max-w-[180px] truncate" title={feed.message || ''}>
+                      {feed.message || '—'}
+                    </span>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+          </>
         )}
       </div>
 
