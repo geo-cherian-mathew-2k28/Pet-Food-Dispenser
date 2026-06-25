@@ -1,10 +1,10 @@
 // SmartCat Feeder - Device Routes
-// Returns real-time device online/offline status and last heartbeat info.
+// Returns real-time device online/offline status, last heartbeat info, and admin settings.
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { prisma } from '../../config/prisma';
 import { env } from '../../config/env';
-import { authenticate } from '../../middleware/auth.middleware';
+import { authenticate, requireAdmin } from '../../middleware/auth.middleware';
 import { getMqttConnectionStatus } from '../mqtt/mqtt.service';
 
 export const deviceRouter = Router();
@@ -30,6 +30,7 @@ deviceRouter.get('/status', async (req: Request, res: Response, next: NextFuncti
             wifiStrength: null,
             lastMessage: 'No data received yet',
             servoOpenDurationMs: 1500,
+            maxFeedsPerDay: env.maxFeedsPerDay,
             feedCooldownSeconds: env.feedCooldownSeconds,
           },
       mqttConnected: getMqttConnectionStatus(),
@@ -39,26 +40,45 @@ deviceRouter.get('/status', async (req: Request, res: Response, next: NextFuncti
   }
 });
 
-// ─── Device Settings ──────────────────────────────────────────────────────────
+// ─── Device Settings (Admin only) ─────────────────────────────────────────────
 // POST /api/device/settings
-deviceRouter.post('/settings', async (req: Request, res: Response, next: NextFunction) => {
+deviceRouter.post('/settings', requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { servoOpenDurationMs } = req.body;
+    const { servoOpenDurationMs, maxFeedsPerDay } = req.body;
 
-    if (typeof servoOpenDurationMs !== 'number' || servoOpenDurationMs < 100 || servoOpenDurationMs > 30000) {
-      res.status(400).json({ error: 'servoOpenDurationMs must be a number between 100 and 30000 ms' });
+    // Validate servo duration if provided
+    if (servoOpenDurationMs !== undefined) {
+      if (typeof servoOpenDurationMs !== 'number' || servoOpenDurationMs < 100 || servoOpenDurationMs > 30000) {
+        res.status(400).json({ error: 'servoOpenDurationMs must be a number between 100 and 30000 ms' });
+        return;
+      }
+    }
+
+    // Validate maxFeedsPerDay if provided
+    if (maxFeedsPerDay !== undefined) {
+      if (typeof maxFeedsPerDay !== 'number' || !Number.isInteger(maxFeedsPerDay) || maxFeedsPerDay < 1 || maxFeedsPerDay > 100) {
+        res.status(400).json({ error: 'maxFeedsPerDay must be an integer between 1 and 100' });
+        return;
+      }
+    }
+
+    const updateData: Record<string, unknown> = {};
+    if (servoOpenDurationMs !== undefined) updateData.servoOpenDurationMs = servoOpenDurationMs;
+    if (maxFeedsPerDay !== undefined) updateData.maxFeedsPerDay = maxFeedsPerDay;
+
+    if (Object.keys(updateData).length === 0) {
+      res.status(400).json({ error: 'No valid settings fields provided' });
       return;
     }
 
     const device = await prisma.deviceStatus.upsert({
       where: { id: 'device-1' },
-      update: {
-        servoOpenDurationMs,
-      },
+      update: updateData,
       create: {
         id: 'device-1',
         status: 'OFFLINE',
-        servoOpenDurationMs,
+        servoOpenDurationMs: servoOpenDurationMs ?? 1500,
+        maxFeedsPerDay: maxFeedsPerDay ?? env.maxFeedsPerDay,
       },
     });
 

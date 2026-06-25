@@ -3,7 +3,7 @@
 
 import { prisma } from '../../config/prisma';
 import { env } from '../../config/env';
-import { publishFeedCommandAndWait } from '../mqtt/mqtt.service';
+import { publishFeedCommandAndWait, getIsDispensing } from '../mqtt/mqtt.service';
 import { generateRequestId } from '../../utils/requestId';
 import { logger } from '../../utils/logger';
 
@@ -29,6 +29,29 @@ export interface FeedResult {
 export async function triggerFeed(req: FeedRequest): Promise<FeedResult> {
   const { source, userId, userName, portion = 1 } = req;
   const requestId = generateRequestId();
+
+  // ── 0. Simultaneous feed guard ─────────────────────────────────────────────
+  // Prevents two users/sources from triggering a feed at the same time
+  if (getIsDispensing()) {
+    logger.warn('Feed rejected: device is already dispensing');
+    await prisma.feedLog.create({
+      data: {
+        source,
+        status: 'FAILED',
+        portion,
+        userId,
+        userName,
+        requestId,
+        message: 'Another feed is already in progress. Please wait.',
+        completedAt: new Date(),
+      },
+    });
+    return {
+      success: false,
+      message: 'The feeder is currently dispensing. Please wait a moment before trying again.',
+      requestId,
+    };
+  }
 
   // ── 1. Check daily feed limit ──────────────────────────────────────────────
   const todayStart = new Date();

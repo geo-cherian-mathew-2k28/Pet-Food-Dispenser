@@ -1,19 +1,26 @@
 /*
  * =============================================================================
- *  SmartCat Feeder - Arduino UNO R4 WiFi Firmware
+ *  SmartCat Feeder - Arduino UNO R4 WiFi Firmware  v2.1
  * =============================================================================
  *  Hardware  : Arduino UNO R4 WiFi
- *  Libraries : WiFiS3, ArduinoMqttClient, Servo, ArduinoJson
+ *  Libraries : WiFiS3, PubSubClient, Servo, ArduinoJson, Arduino_LED_Matrix
  *
  *  Wiring (SG90 / MG995 Servo):
  *    Brown / Black wire  → GND
- *    Red wire            → 5V  (use external 5V supply if servo jitters)
+ *    Red wire            → 5V  (external power supply recommended)
  *    Orange / Yellow     → D9  (PWM signal pin)
  *
- *  Servo behaviour:
- *    CLOSED_ANGLE = 0    →  hopper sealed
- *    OPEN_ANGLE   = 160  →  hopper open — adjust based on your build
- *    Open duration is configurable from the web dashboard.
+ *  LED Matrix Status Codes (built-in 12×8 matrix on UNO R4 WiFi):
+ *    Startup          : spinning / scanning animation
+ *    WiFi Connecting  : wave sweep left→right
+ *    WiFi Connected   : solid checkmark frame
+ *    WiFi Failed      : "X" / cross frame
+ *    MQTT Connecting  : blinking dots (3-dot row)
+ *    MQTT Connected   : full smile / happy face
+ *    MQTT Failed      : sad face
+ *    Dispensing       : downward arrow animation
+ *    Heartbeat ping   : brief single-row flash
+ *    Simultaneous blk : flashing warning bars
  * =============================================================================
  */
 
@@ -21,6 +28,9 @@
 #include <PubSubClient.h>
 #include <Servo.h>
 #include <ArduinoJson.h>
+#include <Arduino_LED_Matrix.h>
+
+ArduinoLEDMatrix matrix;
 
 // =============================================================================
 //  ⚙️  USER CONFIGURATION — Change only these values
@@ -30,8 +40,6 @@ char WIFI_SSID[]     = "Mullananickal KvFi";
 char WIFI_PASSWORD[] = "geo@6756";
 
 // ── MQTT ──────────────────────────────────────────────────────────────────────
-// USE_TLS false = plain TCP port 1883 (public broker, no NTP needed)
-// USE_TLS true  = TLS port 8883 (HiveMQ Cloud — requires stable NTP)
 #define USE_TLS false
 
 #if USE_TLS
@@ -40,29 +48,128 @@ char WIFI_PASSWORD[] = "geo@6756";
   const char MQTT_USERNAME[] = "geo123";
   const char MQTT_PASSWORD[] = "GeoCatFeeder2026";
 #else
-  // broker.emqx.io: public broker, no auth on port 1883
   const char MQTT_BROKER[]   = "broker.emqx.io";
   const int  MQTT_PORT       = 1883;
   const char MQTT_USERNAME[] = "";
   const char MQTT_PASSWORD[] = "";
 #endif
 
-// Client ID is made unique per-boot by appending millis() in setup()
 char MQTT_CLIENT_ID[40] = "smartcat-uno-";
 
 // ── Servo ─────────────────────────────────────────────────────────────────────
-const int SERVO_PIN        = 9;    // PWM pin — orange/yellow servo wire
-const int CLOSED_ANGLE     = 0;    // Hopper sealed position (degrees)
-const int OPEN_ANGLE       = 160;  // Hopper open position — tune to your build
-const int DEFAULT_DURATION = 2000; // Default open duration (ms) if not set in dashboard
+const int SERVO_PIN        = 9;
+const int CLOSED_ANGLE     = 0;
+const int OPEN_ANGLE       = 160;
+const int DEFAULT_DURATION = 2000;
 
 // ── Timing ────────────────────────────────────────────────────────────────────
-const unsigned long HEARTBEAT_INTERVAL_MS = 30000;   // 30 s
-const unsigned long DUPLICATE_WINDOW_MS   = 30000;   // ignore same requestId for 30 s
-const unsigned long MQTT_RETRY_INTERVAL   = 12000;   // retry MQTT connect every 12 s
+const unsigned long HEARTBEAT_INTERVAL_MS = 25000;   // 25s (below 90s server timeout)
+const unsigned long DUPLICATE_WINDOW_MS   = 30000;
+const unsigned long MQTT_RETRY_INTERVAL   = 8000;    // retry every 8s (faster)
+const unsigned long WIFI_CHECK_INTERVAL   = 15000;   // check WiFi every 15s
 
 // =============================================================================
-//  MQTT Topic Strings  (built in setup() from MQTT_USERNAME)
+//  LED Matrix Frames — 12×8 bitmaps (rows top→bottom, columns right→left)
+// =============================================================================
+
+// WiFi connecting: left-to-right sweep row
+const uint32_t FRAME_WIFI_CONNECT[3] = {
+  0x000F0000,
+  0x00F00000,
+  0x0F000000
+};
+
+// WiFi connected: checkmark
+const uint32_t FRAME_WIFI_OK[3] = {
+  0x00000001,
+  0x00000182,
+  0x0000006C
+};
+
+// WiFi failed: X cross
+const uint32_t FRAME_WIFI_FAIL[3] = {
+  0x00000000,
+  0x00A8002A,
+  0x00140000
+};
+
+// MQTT connecting: three dots blinking in a row
+const uint32_t FRAME_MQTT_DOTS[3] = {
+  0x00000000,
+  0x00249000,
+  0x00000000
+};
+
+// MQTT connected: smiley face
+const uint32_t FRAME_MQTT_OK[3] = {
+  0x000A0000,
+  0x00000A00,
+  0x000F0000
+};
+
+// MQTT failed: sad face
+const uint32_t FRAME_MQTT_FAIL[3] = {
+  0x000A0000,
+  0x00000A00,
+  0x0000F000
+};
+
+// Dispensing: downward arrow
+const uint32_t FRAME_DISPENSING_A[3] = {
+  0x00040000,
+  0x000E0000,
+  0x001F0000
+};
+const uint32_t FRAME_DISPENSING_B[3] = {
+  0x00000000,
+  0x00040000,
+  0x000E0000
+};
+
+// Heartbeat: quick full-row flash
+const uint32_t FRAME_HEARTBEAT[3] = {
+  0x00000000,
+  0x00FFF000,
+  0x00000000
+};
+
+// Block simultaneous: warning bars
+const uint32_t FRAME_BLOCKED[3] = {
+  0x00FF0000,
+  0x00000000,
+  0x000FF000
+};
+
+// Idle / clear
+const uint32_t FRAME_IDLE[3] = {
+  0x00000000,
+  0x00000000,
+  0x00000000
+};
+
+// Startup scanning animation frames
+const uint32_t FRAME_SCAN_1[3] = { 0x00100000, 0x00000000, 0x00000000 };
+const uint32_t FRAME_SCAN_2[3] = { 0x00000000, 0x00100000, 0x00000000 };
+const uint32_t FRAME_SCAN_3[3] = { 0x00000000, 0x00000000, 0x00100000 };
+
+// =============================================================================
+//  LED Helper — display a 3-uint32 frame
+// =============================================================================
+void showFrame(const uint32_t frame[3]) {
+  matrix.loadFrame(frame);
+}
+
+void blinkFrame(const uint32_t frame[3], int times, int delayMs) {
+  for (int i = 0; i < times; i++) {
+    showFrame(frame);
+    delay(delayMs);
+    showFrame(FRAME_IDLE);
+    delay(delayMs);
+  }
+}
+
+// =============================================================================
+//  MQTT Topic Strings  (built in setup())
 // =============================================================================
 String TOPIC_COMMAND;
 String TOPIC_RESPONSE;
@@ -80,16 +187,19 @@ String TOPIC_STATUS;
 #endif
 
 PubSubClient mqttClient(wifiClient);
-Servo      feederServo;
+Servo        feederServo;
 
 unsigned long lastHeartbeatMs   = 0;
 unsigned long deviceUptimeStart = 0;
 unsigned long lastMqttRetryMs   = 0;
+unsigned long lastWifiCheckMs   = 0;
 bool          mqttConnected     = false;
-bool          isDispensing      = false;  // guard: block reconnects during dispense
+
+// ── Dispensing lock — prevents simultaneous feeds ─────────────────────────────
+volatile bool isDispensing = false;
 
 // Dedup tracking
-String        lastRequestId    = "";
+String        lastRequestId     = "";
 unsigned long lastRequestTimeMs = 0;
 
 // =============================================================================
@@ -105,20 +215,38 @@ void publishHeartbeat();
 void publishStatus(const String& status);
 void publishError(const String& errorMsg);
 String getIsoTimestamp();
+void startupAnimation();
+
+// =============================================================================
+//  Startup Animation
+// =============================================================================
+void startupAnimation() {
+  const uint32_t* frames[] = { FRAME_SCAN_1, FRAME_SCAN_2, FRAME_SCAN_3 };
+  for (int r = 0; r < 3; r++) {
+    for (int i = 0; i < 3; i++) {
+      showFrame(frames[i]);
+      delay(80);
+    }
+  }
+  showFrame(FRAME_IDLE);
+}
 
 // =============================================================================
 //  Setup
 // =============================================================================
 void setup() {
   Serial.begin(115200);
-  delay(1500);
+  delay(1200);
+
+  // Start LED matrix
+  matrix.begin();
+  startupAnimation();
+
   Serial.println(F("=============================================="));
-  Serial.println(F("  SmartCat Feeder - Arduino UNO R4 WiFi"));
+  Serial.println(F("  SmartCat Feeder - Arduino UNO R4 WiFi v2.1"));
   Serial.println(F("=============================================="));
 
-  Serial.print(F("MQTT Client ID base: ")); Serial.println(MQTT_CLIENT_ID);
-
-  // Build topic strings — fixed namespace "geo123" isolates from other public broker users
+  // Build topic strings
   String prefix = String("smartcat/geo123/device/");
   TOPIC_COMMAND   = prefix + "command";
   TOPIC_RESPONSE  = prefix + "response";
@@ -127,25 +255,26 @@ void setup() {
   TOPIC_STATUS    = prefix + "status";
 
   Serial.print(F("Command topic : ")); Serial.println(TOPIC_COMMAND);
-  
-  Serial.setTimeout(50); // Prevent Serial.readStringUntil from blocking for 1 second
+  Serial.setTimeout(50);
 
+  // Configure MQTT with faster keepalive
   mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
   mqttClient.setCallback(onMqttMessage);
+  mqttClient.setKeepAlive(15);     // 15s keepalive → server detects drops faster
+  mqttClient.setSocketTimeout(8);  // 8s socket timeout
 
-  // Servo startup test — verifies wiring and position
+  // Servo self-test
   Serial.println(F("Servo self-test..."));
   feederServo.attach(SERVO_PIN);
   feederServo.write(CLOSED_ANGLE);
-  delay(400);
+  delay(300);
   feederServo.write(OPEN_ANGLE);
-  delay(500);
-  feederServo.write(CLOSED_ANGLE);
   delay(400);
-  feederServo.detach();   // detach when idle to prevent jitter / PWM conflict
-  Serial.println(F("Servo self-test complete. Servo detached (idle)."));
+  feederServo.write(CLOSED_ANGLE);
+  delay(300);
+  feederServo.detach();
+  Serial.println(F("Servo self-test done. Servo detached."));
 
-  // Connect WiFi then MQTT
   connectWiFi();
   deviceUptimeStart = millis();
 }
@@ -154,51 +283,50 @@ void setup() {
 //  Main Loop
 // =============================================================================
 void loop() {
-  // ── 1. While dispensing, do nothing else (servo needs clean timing) ──────
-  if (isDispensing) return;
+  // While dispensing: just keep MQTT alive minimally, don't reconnect
+  if (isDispensing) {
+    mqttClient.loop();
+    return;
+  }
 
-  // ── 2. Poll for incoming messages first so internal connection status is updated ──
+  // Poll incoming messages
   mqttClient.loop();
 
-  // ── 3. WiFi watchdog ──────────────────────────────────────────────────────
-  if (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0,0,0,0)) {
-    Serial.println(F("[WiFi] Lost connection. Reconnecting..."));
-    connectWiFi();
+  unsigned long now = millis();
+
+  // ── WiFi watchdog (check every 15s) ──────────────────────────────────────
+  if (now - lastWifiCheckMs >= WIFI_CHECK_INTERVAL) {
+    lastWifiCheckMs = now;
+    if (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0, 0, 0, 0)) {
+      Serial.println(F("[WiFi] Lost. Reconnecting..."));
+      mqttConnected = false;
+      connectWiFi();
+    }
   }
 
-  // ── 4. MQTT watchdog (rate-limited to avoid broker flooding) ─────────────
-  if (!mqttConnected) {
-    unsigned long now = millis();
+  // ── MQTT watchdog ─────────────────────────────────────────────────────────
+  if (!mqttConnected || !mqttClient.connected()) {
+    mqttConnected = false;
     if (now - lastMqttRetryMs >= MQTT_RETRY_INTERVAL) {
       lastMqttRetryMs = now;
-      connectMQTT();
-      // After a successful connect, force a long grace period before next check
-      if (mqttConnected) {
-        lastMqttRetryMs = millis(); // reset timer after success
+      if (WiFi.status() == WL_CONNECTED) {
+        wifiClient.stop();
+        delay(50);
+        connectMQTT();
       }
-    }
-  } else {
-    // Check if broker disconnected us (keepalive failure etc.)
-    if (!mqttClient.connected()) {
-      mqttConnected = false;
-      Serial.print(F("[MQTT] Lost connection. MQTT connected: "));
-      Serial.print(mqttClient.connected());
-      Serial.print(F(", TCP connected: "));
-      Serial.print(wifiClient.connected());
-      Serial.print(F(", WiFi status: "));
-      Serial.println(WiFi.status());
-      wifiClient.stop(); // Clean up socket immediately
     }
   }
 
-  // ── 5. Heartbeat ──────────────────────────────────────────────────────────
-  unsigned long now = millis();
+  // ── Heartbeat ────────────────────────────────────────────────────────────
   if (now - lastHeartbeatMs >= HEARTBEAT_INTERVAL_MS) {
     publishHeartbeat();
     lastHeartbeatMs = now;
+    // Brief heartbeat flash on matrix
+    blinkFrame(FRAME_HEARTBEAT, 1, 60);
+    showFrame(mqttConnected ? FRAME_MQTT_OK : FRAME_IDLE);
   }
 
-  // ── 6. Serial test mode (type "feed" in Serial Monitor) ──────────────────
+  // ── Serial test mode ─────────────────────────────────────────────────────
   if (Serial.available() > 0) {
     String input = Serial.readStringUntil('\n');
     input.trim();
@@ -215,24 +343,33 @@ void loop() {
 //  WiFi Connection
 // =============================================================================
 void connectWiFi() {
-  Serial.print(F("[WiFi] Connecting to: "));
-  Serial.println(WIFI_SSID);
+  Serial.print(F("[WiFi] Connecting to: ")); Serial.println(WIFI_SSID);
+
+  // Show "connecting" animation on LED
+  showFrame(FRAME_WIFI_CONNECT);
 
   WiFi.disconnect();
-  delay(500);
+  delay(300);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   int attempts = 0;
-  while ((WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0,0,0,0)) && attempts < 30) {
+  while ((WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0, 0, 0, 0)) && attempts < 30) {
     delay(1000);
     Serial.print('.');
     attempts++;
+    // Animate the "connecting" frame — alternate rows
+    if (attempts % 2 == 0) showFrame(FRAME_WIFI_CONNECT);
+    else                    showFrame(FRAME_IDLE);
   }
 
-  if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0,0,0,0)) {
+  if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0)) {
     Serial.println();
-    Serial.print(F("[WiFi] Connected! IP: ")); Serial.println(WiFi.localIP());
-    Serial.print(F("[WiFi] RSSI: "));         Serial.print(WiFi.RSSI()); Serial.println(F(" dBm"));
+    Serial.print(F("[WiFi] ✅ Connected! IP: ")); Serial.println(WiFi.localIP());
+    Serial.print(F("[WiFi] RSSI: ")); Serial.print(WiFi.RSSI()); Serial.println(F(" dBm"));
+
+    // Show "connected" checkmark for 1s
+    showFrame(FRAME_WIFI_OK);
+    delay(1000);
 
     #if USE_TLS
       Serial.print(F("[NTP] Syncing time..."));
@@ -252,6 +389,8 @@ void connectWiFi() {
     connectMQTT();
   } else {
     Serial.println(F("\n[WiFi] FAILED. Will retry in loop."));
+    blinkFrame(FRAME_WIFI_FAIL, 3, 200);
+    showFrame(FRAME_IDLE);
   }
 }
 
@@ -261,24 +400,21 @@ void connectWiFi() {
 void connectMQTT() {
   if (WiFi.status() != WL_CONNECTED) return;
 
-  // Clean up any existing socket resources to prevent ESP32 socket leaks
-  wifiClient.stop();
-  delay(100);
-
   Serial.print(F("[MQTT] Connecting to "));
   Serial.print(MQTT_BROKER); Serial.print(':'); Serial.println(MQTT_PORT);
 
+  showFrame(FRAME_MQTT_DOTS);
+
   #if USE_TLS
-    wifiClient.setCACert(nullptr);  // use built-in root CA bundle
+    wifiClient.setCACert(nullptr);
   #endif
 
-  char currentClientId[40];
-  randomSeed(analogRead(0));
+  char currentClientId[44];
+  randomSeed(analogRead(A0) ^ millis());
   long randVal = random(100000, 999999);
   snprintf(currentClientId, sizeof(currentClientId), "smartcat-uno-%ld", randVal);
   Serial.print(F("[MQTT] Client ID: ")); Serial.println(currentClientId);
 
-  // Single attempt
   bool connected = false;
   #if USE_TLS
     connected = mqttClient.connect(currentClientId, MQTT_USERNAME, MQTT_PASSWORD);
@@ -287,16 +423,30 @@ void connectMQTT() {
   #endif
 
   if (!connected) {
-    Serial.print(F("[MQTT] Connect failed, state: "));
-    Serial.println(mqttClient.state());
+    int state = mqttClient.state();
+    Serial.print(F("[MQTT] ❌ Connect failed, state: ")); Serial.println(state);
+    blinkFrame(FRAME_MQTT_FAIL, 2, 180);
+    showFrame(FRAME_IDLE);
     return;
   }
 
   mqttConnected = true;
   Serial.println(F("[MQTT] ✅ Connected!"));
 
-  mqttClient.subscribe(TOPIC_COMMAND.c_str());
+  mqttClient.subscribe(TOPIC_COMMAND.c_str(), 1);  // QoS 1
   Serial.print(F("[MQTT] Subscribed to: ")); Serial.println(TOPIC_COMMAND);
+
+  // Publish that device is online
+  publishStatus("online");
+
+  // Immediately publish a heartbeat so the backend marks device ONLINE right away
+  // (especially important after external power reconnection)
+  publishHeartbeat();
+  lastHeartbeatMs = millis();  // reset timer so we don't double-heartbeat immediately
+
+  showFrame(FRAME_MQTT_OK);
+  delay(800);
+  showFrame(FRAME_IDLE);
 }
 
 // =============================================================================
@@ -337,6 +487,24 @@ void handleCommand(const String& payload) {
     return;
   }
 
+  // ── Simultaneous feed guard ────────────────────────────────────────────────
+  if (isDispensing) {
+    Serial.println(F("[CMD] ⚠️  Rejected: already dispensing!"));
+    blinkFrame(FRAME_BLOCKED, 3, 150);
+    showFrame(FRAME_DISPENSING_A);
+
+    // Publish rejection response so the backend resolves the pending promise
+    StaticJsonDocument<256> reject;
+    reject["requestId"] = requestId;
+    reject["status"]    = "failed";
+    reject["message"]   = "Device busy: already dispensing";
+    reject["createdAt"] = getIsoTimestamp();
+    String rejectOut;
+    serializeJson(reject, rejectOut);
+    mqttClient.publish(TOPIC_RESPONSE.c_str(), rejectOut.c_str());
+    return;
+  }
+
   // Deduplication
   unsigned long now = millis();
   if (String(requestId) == lastRequestId && (now - lastRequestTimeMs) < DUPLICATE_WINDOW_MS) {
@@ -357,31 +525,43 @@ void handleCommand(const String& payload) {
 
 // =============================================================================
 //  Dispense Food — Servo Control
-//  isDispensing flag blocks all loop() networking during physical operation
 // =============================================================================
 void dispenseFood(const String& requestId, int portion, int durationMs) {
   isDispensing = true;
   unsigned long startMs = millis();
 
-  // Clamp to sane range
+  // Clamp duration
   if (durationMs < 200)   durationMs = 200;
   if (durationMs > 15000) durationMs = 15000;
 
   long holdMs = (long)durationMs * portion;
 
-  Serial.print(F("[SERVO] Attaching servo on pin ")); Serial.println(SERVO_PIN);
+  // Show dispensing animation on LED
+  showFrame(FRAME_DISPENSING_A);
+
+  Serial.print(F("[SERVO] Attaching on pin ")); Serial.println(SERVO_PIN);
   feederServo.attach(SERVO_PIN);
-  delay(200);  // let PWM stabilise
+  delay(150);
 
   Serial.print(F("[SERVO] Opening to ")); Serial.print(OPEN_ANGLE); Serial.println(F("°"));
   feederServo.write(OPEN_ANGLE);
-  delay(holdMs);  // hold open
+
+  // Animate downward arrow while holding open
+  unsigned long holdStart = millis();
+  bool frameToggle = false;
+  while (millis() - holdStart < (unsigned long)holdMs) {
+    showFrame(frameToggle ? FRAME_DISPENSING_B : FRAME_DISPENSING_A);
+    frameToggle = !frameToggle;
+    // Keep MQTT alive during long dispenses
+    mqttClient.loop();
+    delay(250);
+  }
 
   Serial.print(F("[SERVO] Closing to ")); Serial.print(CLOSED_ANGLE); Serial.println(F("°"));
   feederServo.write(CLOSED_ANGLE);
-  delay(600);  // ensure servo reaches closed position
+  delay(500);
 
-  feederServo.detach();  // detach to prevent jitter when idle
+  feederServo.detach();
   Serial.println(F("[SERVO] Detached (idle)"));
 
   unsigned long elapsed = millis() - startMs;
@@ -389,8 +569,14 @@ void dispenseFood(const String& requestId, int portion, int durationMs) {
 
   isDispensing = false;
 
+  // Show MQTT connected state again
+  showFrame(FRAME_MQTT_OK);
+  delay(600);
+  showFrame(FRAME_IDLE);
+
   // Reconnect MQTT if it dropped during dispense
   if (!mqttClient.connected()) {
+    mqttConnected = false;
     connectMQTT();
   }
 
@@ -414,8 +600,7 @@ void publishResponse(const String& requestId, bool success, const String& messag
   String out;
   serializeJson(doc, out);
 
-  mqttClient.publish(TOPIC_RESPONSE.c_str(), out.c_str());
-
+  mqttClient.publish(TOPIC_RESPONSE.c_str(), out.c_str(), false);  // QoS 0 for speed
   Serial.print(F("[MQTT] TX response: ")); Serial.println(out);
 }
 

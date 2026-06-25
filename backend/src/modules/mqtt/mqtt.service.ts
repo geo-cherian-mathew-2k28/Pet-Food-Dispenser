@@ -19,6 +19,10 @@ export const TOPICS = {
 let client: MqttClient | null = null;
 let isConnected = false;
 
+// Server-side dispensing lock — blocks simultaneous feed requests
+let isServerDispensing = false;
+let serverDispensingRequestId = '';
+
 // Map of requestId → resolver function (for awaiting device responses)
 const pendingResponses = new Map<string, (result: DeviceResponse) => void>();
 
@@ -41,8 +45,10 @@ export function connectMqtt(): void {
     protocol: env.mqtt.port === 8883 ? 'mqtts' : 'mqtt',
     ...(env.mqtt.username ? { username: env.mqtt.username, password: env.mqtt.password } : {}),
     clientId: `${env.mqtt.clientId}-${Math.random().toString(36).substring(2, 8)}`,
-    reconnectPeriod: 5000,
-    connectTimeout: 10000,
+    reconnectPeriod: 3000,    // faster reconnect
+    connectTimeout: 8000,     // faster timeout
+    keepalive: 20,            // 20s keepalive to detect stale connections faster
+    clean: true,
   });
 
   client.on('connect', () => {
@@ -148,6 +154,13 @@ async function handleHeartbeat(data: {
 async function handleDeviceResponse(data: DeviceResponse): Promise<void> {
   const { requestId, status, message } = data;
 
+  // Release server-side dispensing lock
+  if (serverDispensingRequestId === requestId) {
+    isServerDispensing = false;
+    serverDispensingRequestId = '';
+    logger.info(`Dispensing lock released for [${requestId}]`);
+  }
+
   // Update feed log with the response
   try {
     await prisma.feedLog.update({
@@ -184,6 +197,16 @@ export async function publishFeedCommand(payload: {
     return false;
   }
 
+  // Server-side simultaneous feed guard
+  if (isServerDispensing) {
+    logger.warn(`Simultaneous feed blocked. Active request: ${serverDispensingRequestId}`);
+    return false;
+  }
+
+  // Set dispensing lock
+  isServerDispensing = true;
+  serverDispensingRequestId = payload.requestId;
+
   // Fetch configured servo open duration from DB
   let durationMs = 1500;
   try {
@@ -204,15 +227,19 @@ export async function publishFeedCommand(payload: {
     createdAt: new Date().toISOString(),
   });
 
-  client.publish(TOPICS.COMMAND, message, { qos: 1 }, (err) => {
-    if (err) {
-      logger.error('Failed to publish feed command:', err);
-    } else {
-      logger.info(`Published feed command [${payload.requestId}] with duration ${durationMs}ms`);
-    }
+  return new Promise((resolve) => {
+    client!.publish(TOPICS.COMMAND, message, { qos: 1 }, (err) => {
+      if (err) {
+        logger.error('Failed to publish feed command:', err);
+        isServerDispensing = false;
+        serverDispensingRequestId = '';
+        resolve(false);
+      } else {
+        logger.info(`Published feed command [${payload.requestId}] with duration ${durationMs}ms`);
+        resolve(true);
+      }
+    });
   });
-
-  return true;
 }
 
 /**
@@ -260,7 +287,25 @@ export function getMqttConnectionStatus(): boolean {
 }
 
 /**
- * Called by a cron job to mark device offline if heartbeat is stale (>90s).
+ * Returns whether the server currently has a dispensing lock active.
+ */
+export function getIsDispensing(): boolean {
+  return isServerDispensing;
+}
+
+/**
+ * Force-release the server dispensing lock (safety valve for timeouts).
+ */
+export function releaseDispensingLock(): void {
+  isServerDispensing = false;
+  serverDispensingRequestId = '';
+  logger.warn('Dispensing lock force-released');
+}
+
+/**
+ * Called by a cron job to mark device offline if heartbeat is stale.
+ * Threshold = 120s — allows for external power reconnection cycles
+ * (Arduino sends heartbeat every 25s, so 120s = ~4.8 missed beats).
  */
 export async function checkDeviceHeartbeatTimeout(): Promise<void> {
   try {
@@ -270,13 +315,18 @@ export async function checkDeviceHeartbeatTimeout(): Promise<void> {
 
     if (device.status === 'ONLINE' && device.lastHeartbeatAt) {
       const elapsedMs = Date.now() - device.lastHeartbeatAt.getTime();
-      if (elapsedMs > 90_000) {
-        // 90 seconds
+      if (elapsedMs > 120_000) {
+        // 120 seconds without heartbeat = truly offline
         await prisma.deviceStatus.update({
           where: { id: 'device-1' },
-          data: { status: 'OFFLINE', lastMessage: 'Heartbeat timeout' },
+          data: { status: 'OFFLINE', lastMessage: 'Heartbeat timeout (>120s)' },
         });
-        logger.warn('Device marked OFFLINE due to heartbeat timeout');
+        logger.warn('Device marked OFFLINE due to heartbeat timeout (>120s)');
+
+        // Also release any stuck dispensing lock if device went offline mid-feed
+        if (isServerDispensing) {
+          releaseDispensingLock();
+        }
       }
     }
   } catch (err) {

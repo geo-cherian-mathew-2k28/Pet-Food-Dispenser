@@ -1,9 +1,9 @@
 // SmartCat Feeder - Admin Panel Page
-// Allows admins to view registered users and revoke access (delete accounts).
+// Allows admins to view registered users, revoke access, and configure daily feed limits.
 
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
-import { Trash2, Shield, User, AlertCircle, RefreshCw, Mail, MessageSquare } from 'lucide-react';
+import { Trash2, Shield, User, AlertCircle, RefreshCw, Mail, MessageSquare, Settings, CheckCircle2, Loader2, AlertTriangle } from 'lucide-react';
 
 interface UserItem {
   id: string;
@@ -14,20 +14,39 @@ interface UserItem {
   createdAt: string;
 }
 
+interface DeviceSettings {
+  maxFeedsPerDay: number;
+  servoOpenDurationMs: number;
+}
+
 export default function AdminPage() {
   const [users, setUsers] = useState<UserItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Daily limit settings
+  const [deviceSettings, setDeviceSettings] = useState<DeviceSettings | null>(null);
+  const [maxFeedsPerDay, setMaxFeedsPerDay] = useState<number>(10);
+  const [savingLimit, setSavingLimit] = useState(false);
+  const [limitMessage, setLimitMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   const fetchUsers = async () => {
     setLoading(true);
     setError('');
     try {
-      const res = await api.get('/auth/users');
-      setUsers(res.data.users);
+      const [usersRes, deviceRes] = await Promise.all([
+        api.get('/auth/users'),
+        api.get('/device/status'),
+      ]);
+      setUsers(usersRes.data.users);
+      if (deviceRes.data.device) {
+        const dev = deviceRes.data.device;
+        setDeviceSettings(dev);
+        setMaxFeedsPerDay(dev.maxFeedsPerDay ?? 10);
+      }
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to fetch users');
+      setError(err.response?.data?.error || 'Failed to fetch admin data');
     } finally {
       setLoading(false);
     }
@@ -52,17 +71,35 @@ export default function AdminPage() {
     }
   };
 
+  const handleSaveDailyLimit = async () => {
+    setSavingLimit(true);
+    setLimitMessage(null);
+    try {
+      const res = await api.post('/device/settings', { maxFeedsPerDay });
+      setDeviceSettings(prev => prev ? { ...prev, maxFeedsPerDay } : prev);
+      setLimitMessage({ type: 'success', text: `Daily limit updated to ${maxFeedsPerDay} feeds/day` });
+      if (res.data.device) {
+        setDeviceSettings(res.data.device);
+        setMaxFeedsPerDay(res.data.device.maxFeedsPerDay);
+      }
+    } catch (err: any) {
+      setLimitMessage({ type: 'error', text: err.response?.data?.error || 'Failed to update limit' });
+    } finally {
+      setSavingLimit(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-slide-up">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Admin Panel</h1>
-          <p className="text-gray-500 text-sm mt-1">Manage system accounts and access control</p>
+          <p className="text-gray-500 text-sm mt-1">Manage system accounts, access control, and feeding limits</p>
         </div>
         <button
           onClick={fetchUsers}
           className="btn-ghost p-2 rounded-lg"
-          title="Refresh User List"
+          title="Refresh"
         >
           <RefreshCw className="w-5 h-5 text-gray-600" />
         </button>
@@ -75,6 +112,79 @@ export default function AdminPage() {
         </div>
       )}
 
+      {/* ── Daily Feed Limit Control ────────────────────────────────────────── */}
+      <div className="card p-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Settings className="w-5 h-5 text-cat-500" />
+          <h2 className="font-bold text-gray-900 text-lg">Daily Feed Limit</h2>
+        </div>
+        <p className="text-xs text-gray-500 mb-5">
+          Set the maximum number of times the feeder can be triggered per day (across all sources: web, Telegram, and schedules).
+        </p>
+
+        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Max feeds per day: <span className="font-bold text-cat-600">{maxFeedsPerDay}</span>
+            </label>
+            <input
+              type="range"
+              min="1"
+              max="50"
+              step="1"
+              value={maxFeedsPerDay}
+              onChange={(e) => setMaxFeedsPerDay(Number(e.target.value))}
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-cat-500"
+            />
+            <div className="flex justify-between text-xs text-gray-400 mt-1.5">
+              <span>1 (strict)</span>
+              <span>25 (normal)</span>
+              <span>50 (max)</span>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 min-w-[140px]">
+            <div className="text-center">
+              <div className="text-4xl font-extrabold text-cat-500">{maxFeedsPerDay}</div>
+              <div className="text-xs text-gray-400">feeds / day</div>
+            </div>
+            <button
+              onClick={handleSaveDailyLimit}
+              disabled={savingLimit}
+              className="btn-primary justify-center py-2 text-sm font-semibold gap-1.5"
+            >
+              {savingLimit ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Saving...</span>
+                </>
+              ) : (
+                <span>Save Limit</span>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {limitMessage && (
+          <div className={`mt-3 p-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 ${
+            limitMessage.type === 'success'
+              ? 'bg-green-50 text-green-700 border border-green-100'
+              : 'bg-red-50 text-red-700 border border-red-100'
+          }`}>
+            {limitMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+            <span>{limitMessage.text}</span>
+          </div>
+        )}
+
+        {deviceSettings && (
+          <div className="mt-4 pt-4 border-t border-gray-50 flex flex-wrap gap-4 text-xs text-gray-500">
+            <span>Current limit: <strong className="text-gray-800">{deviceSettings.maxFeedsPerDay} feeds/day</strong></span>
+            <span>Servo open: <strong className="text-gray-800">{(deviceSettings.servoOpenDurationMs / 1000).toFixed(1)}s</strong></span>
+          </div>
+        )}
+      </div>
+
+      {/* ── User Management ─────────────────────────────────────────────────── */}
       {loading ? (
         <div className="flex items-center justify-center py-20 text-gray-400">
           <RefreshCw className="w-6 h-6 animate-spin mr-2" />
@@ -88,6 +198,11 @@ export default function AdminPage() {
         <>
           {/* Desktop Table View */}
           <div className="hidden md:block overflow-hidden bg-white rounded-2xl border border-gray-100 shadow-card">
+            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-2">
+              <Shield className="w-4 h-4 text-cat-500" />
+              <h2 className="font-bold text-gray-900">System Users</h2>
+              <span className="ml-auto text-xs text-gray-400">{users.length} registered</span>
+            </div>
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
