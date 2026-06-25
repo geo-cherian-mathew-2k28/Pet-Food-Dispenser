@@ -75,8 +75,12 @@ export default function AdminPage() {
     setSavingLimit(true);
     setLimitMessage(null);
     try {
-      const res = await api.post('/device/settings', { maxFeedsPerDay });
-      setDeviceSettings(prev => prev ? { ...prev, maxFeedsPerDay } : prev);
+      // Always send both fields so validation passes on all backend versions
+      const payload: Record<string, number> = { maxFeedsPerDay };
+      if (deviceSettings?.servoOpenDurationMs) {
+        payload.servoOpenDurationMs = deviceSettings.servoOpenDurationMs;
+      }
+      const res = await api.post('/device/settings', payload);
       setLimitMessage({ type: 'success', text: `Daily limit updated to ${maxFeedsPerDay} feeds/day` });
       if (res.data.device) {
         setDeviceSettings(res.data.device);

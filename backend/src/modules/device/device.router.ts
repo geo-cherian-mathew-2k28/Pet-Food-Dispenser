@@ -4,7 +4,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { prisma } from '../../config/prisma';
 import { env } from '../../config/env';
-import { authenticate, requireAdmin } from '../../middleware/auth.middleware';
+import { authenticate } from '../../middleware/auth.middleware';
 import { getMqttConnectionStatus } from '../mqtt/mqtt.service';
 
 export const deviceRouter = Router();
@@ -40,9 +40,11 @@ deviceRouter.get('/status', async (req: Request, res: Response, next: NextFuncti
   }
 });
 
-// ─── Device Settings (Admin only) ─────────────────────────────────────────────
+// ─── Device Settings ──────────────────────────────────────────────────────────
 // POST /api/device/settings
-deviceRouter.post('/settings', requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
+// - servoOpenDurationMs: all authenticated users
+// - maxFeedsPerDay: admin only
+deviceRouter.post('/settings', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { servoOpenDurationMs, maxFeedsPerDay } = req.body;
 
@@ -54,8 +56,12 @@ deviceRouter.post('/settings', requireAdmin, async (req: Request, res: Response,
       }
     }
 
-    // Validate maxFeedsPerDay if provided
+    // maxFeedsPerDay is admin-only
     if (maxFeedsPerDay !== undefined) {
+      if (req.user?.role !== 'ADMIN') {
+        res.status(403).json({ error: 'Only admins can change the daily feed limit' });
+        return;
+      }
       if (typeof maxFeedsPerDay !== 'number' || !Number.isInteger(maxFeedsPerDay) || maxFeedsPerDay < 1 || maxFeedsPerDay > 100) {
         res.status(400).json({ error: 'maxFeedsPerDay must be an integer between 1 and 100' });
         return;
