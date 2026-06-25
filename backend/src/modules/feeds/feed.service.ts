@@ -57,22 +57,36 @@ export async function triggerFeed(req: FeedRequest): Promise<FeedResult> {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
+  // Clean up stale PENDING feeds (older than 60s) — these are stuck from offline/timeout
+  const staleThreshold = new Date(Date.now() - 60_000);
+  await prisma.feedLog.updateMany({
+    where: {
+      status: 'PENDING',
+      createdAt: { lt: staleThreshold },
+    },
+    data: {
+      status: 'FAILED',
+      message: 'Timed out — no response from device',
+      completedAt: new Date(),
+    },
+  });
+
   const device = await prisma.deviceStatus.findUnique({
     where: { id: 'device-1' },
   });
+  // Only count SUCCESS feeds — PENDING are in-flight; FAILED should never block future feeds
   const maxFeeds = device?.maxFeedsPerDay ?? env.maxFeedsPerDay;
 
   const todayFeedCount = await prisma.feedLog.count({
     where: {
       createdAt: { gte: todayStart },
-      status: { in: ['SUCCESS', 'PENDING'] },
+      status: 'SUCCESS',
     },
   });
 
   if (todayFeedCount >= maxFeeds) {
-    logger.warn(`Feed rejected: daily limit of ${maxFeeds} reached`);
+    logger.warn(`Feed rejected: daily limit of ${maxFeeds} reached (${todayFeedCount} successful feeds today)`);
 
-    // Log the rejected attempt
     await prisma.feedLog.create({
       data: {
         source,
