@@ -645,30 +645,27 @@ void dispenseFood(const String& requestId, int portion, int durationMs) {
 
   long holdMs = (long)durationMs * portion;
 
-  // Show dispensing animation on LED
+  // Show static dispensing frame on LED (avoid animating to prevent PWM timer conflicts)
   showFrame(FRAME_DISP_A);
 
   Serial.print(F("[SERVO] Attaching on pin ")); Serial.println(SERVO_PIN);
   feederServo.attach(SERVO_PIN);
-  delay(150);
+  delay(250); // Allow servo to stabilize after attach
 
   Serial.print(F("[SERVO] Opening to ")); Serial.print(OPEN_ANGLE); Serial.println(F("°"));
   feederServo.write(OPEN_ANGLE);
 
-  // Animate downward arrow while holding open
+  // Hold open without loading new LED frames to avoid timer conflicts
   unsigned long holdStart = millis();
-  bool frameToggle = false;
   while (millis() - holdStart < (unsigned long)holdMs) {
-    showFrame(frameToggle ? FRAME_DISP_B : FRAME_DISP_A);
-    frameToggle = !frameToggle;
     // Keep MQTT alive during long dispenses
     mqttClient.loop();
-    delay(250);
+    delay(50);
   }
 
   Serial.print(F("[SERVO] Closing to ")); Serial.print(CLOSED_ANGLE); Serial.println(F("°"));
   feederServo.write(CLOSED_ANGLE);
-  delay(500);
+  delay(600); // Allow ample time for closing swing to complete
 
   feederServo.detach();
   Serial.println(F("[SERVO] Detached (idle)"));

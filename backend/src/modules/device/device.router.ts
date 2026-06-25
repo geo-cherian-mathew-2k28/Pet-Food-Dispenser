@@ -102,6 +102,28 @@ deviceRouter.get('/debug', async (req: Request, res: Response, next: NextFunctio
       res.status(403).json({ error: 'Admin only' });
       return;
     }
+
+    // 1. Cleanup temporary test users and related records
+    const usersToDelete = await prisma.user.findMany({
+      where: {
+        OR: [
+          { email: { contains: 'temp-' } },
+          { email: { contains: 'final-check' } },
+          { email: { contains: 'poll-' } },
+          { email: { contains: 'test-admin' } },
+          { email: { contains: 'test-user' } }
+        ],
+        NOT: { id: req.user!.userId }
+      },
+      select: { id: true }
+    });
+    const userIds = usersToDelete.map(u => u.id);
+    if (userIds.length > 0) {
+      await prisma.feedLog.deleteMany({ where: { userId: { in: userIds } } });
+      await prisma.schedule.deleteMany({ where: { userId: { in: userIds } } });
+      await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+    }
+
     const device = await prisma.deviceStatus.findUnique({ where: { id: 'device-1' } });
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -117,6 +139,7 @@ deviceRouter.get('/debug', async (req: Request, res: Response, next: NextFunctio
       effectiveLimit: device?.maxFeedsPerDay ?? env.maxFeedsPerDay,
       todaySuccessCount: successCount,
       todayPendingCount: pendingCount,
+      cleanedUsersCount: userIds.length
     });
   } catch (err) {
     next(err);
