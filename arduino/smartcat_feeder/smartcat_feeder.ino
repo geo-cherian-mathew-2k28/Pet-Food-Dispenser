@@ -69,104 +69,192 @@ const unsigned long MQTT_RETRY_INTERVAL   = 8000;    // retry every 8s (faster)
 const unsigned long WIFI_CHECK_INTERVAL   = 15000;   // check WiFi every 15s
 
 // =============================================================================
-//  LED Matrix Frames — 12×8 bitmaps (rows top→bottom, columns right→left)
+//  LED Matrix Frames — uint8_t[8][12]  (8 rows × 12 cols, 1=ON, 0=OFF)
+//  Row 0 = top, Row 7 = bottom. Col 0 = left, Col 11 = right.
 // =============================================================================
 
-// WiFi connecting: left-to-right sweep row
-const uint32_t FRAME_WIFI_CONNECT[3] = {
-  0x000F0000,
-  0x00F00000,
-  0x0F000000
+// ── IDLE (all off) ─────────────────────────────────────────────────────────────
+uint8_t FRAME_IDLE[8][12] = {
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
 };
 
-// WiFi connected: checkmark
-const uint32_t FRAME_WIFI_OK[3] = {
-  0x00000001,
-  0x00000182,
-  0x0000006C
+// ── WiFi CONNECTING (builds up like a signal meter — 3 arcs + dot) ─────────────
+// Frame A: just center dot
+uint8_t FRAME_WIFI_A[8][12] = {
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,1,0,0,0,0,0,0},   // dot
+};
+// Frame B: dot + inner arc
+uint8_t FRAME_WIFI_B[8][12] = {
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,1,1,1,0,0,0,0,0},   // inner arc
+  {0,0,0,1,0,0,0,1,0,0,0,0},
+  {0,0,0,0,0,1,0,0,0,0,0,0},   // dot
+};
+// Frame C: dot + inner + middle arc
+uint8_t FRAME_WIFI_C[8][12] = {
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,1,1,1,1,1,0,0,0,0},   // middle arc
+  {0,0,1,0,0,0,0,0,1,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,1,1,1,0,0,0,0,0},   // inner arc
+  {0,0,0,1,0,0,0,1,0,0,0,0},
+  {0,0,0,0,0,1,0,0,0,0,0,0},   // dot
 };
 
-// WiFi failed: X cross
-const uint32_t FRAME_WIFI_FAIL[3] = {
-  0x00000000,
-  0x00A8002A,
-  0x00140000
+// ── WiFi CONNECTED (full 3-arc signal + dot) ────────────────────────────────────
+uint8_t FRAME_WIFI_OK[8][12] = {
+  {0,1,1,1,1,1,1,1,1,1,0,0},   // outer arc
+  {1,0,0,0,0,0,0,0,0,0,1,0},
+  {0,0,0,1,1,1,1,1,0,0,0,0},   // middle arc
+  {0,0,1,0,0,0,0,0,1,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,1,1,1,0,0,0,0,0},   // inner arc
+  {0,0,0,1,0,0,0,1,0,0,0,0},
+  {0,0,0,0,0,1,0,0,0,0,0,0},   // center dot
 };
 
-// MQTT connecting: three dots blinking in a row
-const uint32_t FRAME_MQTT_DOTS[3] = {
-  0x00000000,
-  0x00249000,
-  0x00000000
+// ── WiFi FAILED (bold X) ────────────────────────────────────────────────────────
+uint8_t FRAME_WIFI_FAIL[8][12] = {
+  {1,0,0,0,0,0,0,0,0,0,1,0},
+  {0,1,0,0,0,0,0,0,0,1,0,0},
+  {0,0,1,0,0,0,0,0,1,0,0,0},
+  {0,0,0,1,0,0,0,1,0,0,0,0},
+  {0,0,0,0,1,0,1,0,0,0,0,0},
+  {0,0,0,1,0,0,0,1,0,0,0,0},
+  {0,0,1,0,0,0,0,0,1,0,0,0},
+  {0,1,0,0,0,0,0,0,0,1,0,0},
 };
 
-// MQTT connected: smiley face
-const uint32_t FRAME_MQTT_OK[3] = {
-  0x000A0000,
-  0x00000A00,
-  0x000F0000
+// ── MQTT CONNECTING (3 blinking dots in centre row) ─────────────────────────────
+uint8_t FRAME_MQTT_DOTS[8][12] = {
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,1,0,0,0,0,0,0,0,0,0},   // dot 1
+  {0,0,0,0,0,1,0,0,0,0,0,0},   // dot 2 (centre)
+  {0,0,0,0,0,0,0,0,1,0,0,0},   // dot 3
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
 };
 
-// MQTT failed: sad face
-const uint32_t FRAME_MQTT_FAIL[3] = {
-  0x000A0000,
-  0x00000A00,
-  0x0000F000
+// ── MQTT CONNECTED (smiley face) ────────────────────────────────────────────────
+uint8_t FRAME_MQTT_OK[8][12] = {
+  {0,0,0,1,1,1,1,1,0,0,0,0},   // top of circle
+  {0,0,1,0,0,0,0,0,1,0,0,0},
+  {0,1,0,1,0,0,0,1,0,1,0,0},   // eyes
+  {0,1,0,0,0,0,0,0,0,1,0,0},
+  {0,1,0,1,0,0,0,1,0,1,0,0},   // smile corners
+  {0,0,1,0,1,1,1,0,1,0,0,0},   // smile curve
+  {0,0,0,1,0,0,0,1,0,0,0,0},
+  {0,0,0,0,1,1,1,0,0,0,0,0},   // chin
 };
 
-// Dispensing: downward arrow
-const uint32_t FRAME_DISPENSING_A[3] = {
-  0x00040000,
-  0x000E0000,
-  0x001F0000
-};
-const uint32_t FRAME_DISPENSING_B[3] = {
-  0x00000000,
-  0x00040000,
-  0x000E0000
-};
-
-// Heartbeat: quick full-row flash
-const uint32_t FRAME_HEARTBEAT[3] = {
-  0x00000000,
-  0x00FFF000,
-  0x00000000
+// ── MQTT FAILED (sad face) ──────────────────────────────────────────────────────
+uint8_t FRAME_MQTT_FAIL[8][12] = {
+  {0,0,0,1,1,1,1,1,0,0,0,0},
+  {0,0,1,0,0,0,0,0,1,0,0,0},
+  {0,1,0,1,0,0,0,1,0,1,0,0},   // eyes
+  {0,1,0,0,0,0,0,0,0,1,0,0},
+  {0,1,0,0,1,1,1,0,0,1,0,0},   // sad mouth (flat/frown)
+  {0,0,1,1,0,0,0,1,1,0,0,0},   // frown curves down
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
 };
 
-// Block simultaneous: warning bars
-const uint32_t FRAME_BLOCKED[3] = {
-  0x00FF0000,
-  0x00000000,
-  0x000FF000
+// ── DISPENSING — Frame A (arrow shaft + full arrowhead) ─────────────────────────
+uint8_t FRAME_DISP_A[8][12] = {
+  {0,0,0,0,0,1,0,0,0,0,0,0},   // shaft top
+  {0,0,0,0,0,1,0,0,0,0,0,0},
+  {0,0,0,0,0,1,0,0,0,0,0,0},
+  {0,0,0,0,0,1,0,0,0,0,0,0},
+  {1,1,1,1,1,1,1,1,1,1,0,0},   // arrowhead wide row
+  {0,1,1,1,1,1,1,1,1,0,0,0},
+  {0,0,1,1,1,1,1,1,0,0,0,0},
+  {0,0,0,1,1,1,1,0,0,0,0,0},   // tip
+};
+// Frame B (shaft only — alternates to animate) ───────────────────────────────────
+uint8_t FRAME_DISP_B[8][12] = {
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,1,0,0,0,0,0,0},   // shaft (offset)
+  {0,0,0,0,0,1,0,0,0,0,0,0},
+  {0,0,0,0,0,1,0,0,0,0,0,0},
+  {0,1,1,1,1,1,1,1,1,0,0,0},   // smaller head
+  {0,0,1,1,1,1,1,1,0,0,0,0},
+  {0,0,0,1,1,1,1,0,0,0,0,0},
+  {0,0,0,0,1,1,0,0,0,0,0,0},   // tip
 };
 
-// Idle / clear
-const uint32_t FRAME_IDLE[3] = {
-  0x00000000,
-  0x00000000,
-  0x00000000
+// ── HEARTBEAT (two solid centre rows, quick flash) ───────────────────────────────
+uint8_t FRAME_HEARTBEAT[8][12] = {
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {1,1,1,1,1,1,1,1,1,1,1,1},   // solid rows
+  {1,1,1,1,1,1,1,1,1,1,1,1},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
 };
 
-// Startup scanning animation frames
-const uint32_t FRAME_SCAN_1[3] = { 0x00100000, 0x00000000, 0x00000000 };
-const uint32_t FRAME_SCAN_2[3] = { 0x00000000, 0x00100000, 0x00000000 };
-const uint32_t FRAME_SCAN_3[3] = { 0x00000000, 0x00000000, 0x00100000 };
+// ── BLOCKED / busy (alternating horizontal stripes — unmistakable warning) ──────
+uint8_t FRAME_BLOCKED[8][12] = {
+  {1,1,1,1,1,1,1,1,1,1,1,1},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {1,1,1,1,1,1,1,1,1,1,1,1},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {1,1,1,1,1,1,1,1,1,1,1,1},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+  {1,1,1,1,1,1,1,1,1,1,1,1},
+  {0,0,0,0,0,0,0,0,0,0,0,0},
+};
+
+// ── CHECKMARK (large, diagonal ✓) ───────────────────────────────────────────────
+uint8_t FRAME_CHECK[8][12] = {
+  {0,0,0,0,0,0,0,0,0,0,1,0},
+  {0,0,0,0,0,0,0,0,0,1,0,0},
+  {0,0,0,0,0,0,0,0,1,0,0,0},
+  {0,0,0,0,0,0,0,1,0,0,0,0},
+  {1,0,0,0,0,0,1,0,0,0,0,0},
+  {0,1,0,0,0,1,0,0,0,0,0,0},
+  {0,0,1,0,1,0,0,0,0,0,0,0},
+  {0,0,0,1,0,0,0,0,0,0,0,0},
+};
 
 // =============================================================================
-//  LED Helper — display a 3-uint32 frame
+//  LED Helpers
 // =============================================================================
-void showFrame(const uint32_t frame[3]) {
+void showFrame(uint8_t frame[8][12]) {
   matrix.loadFrame(frame);
 }
 
-void blinkFrame(const uint32_t frame[3], int times, int delayMs) {
+void blinkFrame(uint8_t frame[8][12], int times, int delayMs) {
   for (int i = 0; i < times; i++) {
-    showFrame(frame);
+    matrix.loadFrame(frame);
     delay(delayMs);
-    showFrame(FRAME_IDLE);
+    matrix.loadFrame(FRAME_IDLE);
     delay(delayMs);
   }
 }
+
 
 // =============================================================================
 //  MQTT Topic Strings  (built in setup())
@@ -221,13 +309,13 @@ void startupAnimation();
 //  Startup Animation
 // =============================================================================
 void startupAnimation() {
-  const uint32_t* frames[] = { FRAME_SCAN_1, FRAME_SCAN_2, FRAME_SCAN_3 };
-  for (int r = 0; r < 3; r++) {
-    for (int i = 0; i < 3; i++) {
-      showFrame(frames[i]);
-      delay(80);
-    }
-  }
+  // Boot sequence: WiFi signal builds up A→B→C→full, then clears
+  showFrame(FRAME_WIFI_A); delay(150);
+  showFrame(FRAME_WIFI_B); delay(150);
+  showFrame(FRAME_WIFI_C); delay(150);
+  showFrame(FRAME_WIFI_OK); delay(300);
+  showFrame(FRAME_IDLE);   delay(100);
+  showFrame(FRAME_WIFI_OK); delay(200);
   showFrame(FRAME_IDLE);
 }
 
@@ -345,8 +433,8 @@ void loop() {
 void connectWiFi() {
   Serial.print(F("[WiFi] Connecting to: ")); Serial.println(WIFI_SSID);
 
-  // Show "connecting" animation on LED
-  showFrame(FRAME_WIFI_CONNECT);
+  // Show WiFi connecting animation — signal bars building up
+  showFrame(FRAME_WIFI_A);
 
   WiFi.disconnect();
   delay(300);
@@ -357,9 +445,10 @@ void connectWiFi() {
     delay(1000);
     Serial.print('.');
     attempts++;
-    // Animate the "connecting" frame — alternate rows
-    if (attempts % 2 == 0) showFrame(FRAME_WIFI_CONNECT);
-    else                    showFrame(FRAME_IDLE);
+    // Cycle through 3 signal-building frames
+    if      (attempts % 3 == 0) showFrame(FRAME_WIFI_C);
+    else if (attempts % 3 == 1) showFrame(FRAME_WIFI_A);
+    else                        showFrame(FRAME_WIFI_B);
   }
 
   if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0)) {
@@ -491,7 +580,7 @@ void handleCommand(const String& payload) {
   if (isDispensing) {
     Serial.println(F("[CMD] ⚠️  Rejected: already dispensing!"));
     blinkFrame(FRAME_BLOCKED, 3, 150);
-    showFrame(FRAME_DISPENSING_A);
+    showFrame(FRAME_DISP_A);
 
     // Publish rejection response so the backend resolves the pending promise
     StaticJsonDocument<256> reject;
@@ -537,7 +626,7 @@ void dispenseFood(const String& requestId, int portion, int durationMs) {
   long holdMs = (long)durationMs * portion;
 
   // Show dispensing animation on LED
-  showFrame(FRAME_DISPENSING_A);
+  showFrame(FRAME_DISP_A);
 
   Serial.print(F("[SERVO] Attaching on pin ")); Serial.println(SERVO_PIN);
   feederServo.attach(SERVO_PIN);
@@ -550,7 +639,7 @@ void dispenseFood(const String& requestId, int portion, int durationMs) {
   unsigned long holdStart = millis();
   bool frameToggle = false;
   while (millis() - holdStart < (unsigned long)holdMs) {
-    showFrame(frameToggle ? FRAME_DISPENSING_B : FRAME_DISPENSING_A);
+    showFrame(frameToggle ? FRAME_DISP_B : FRAME_DISP_A);
     frameToggle = !frameToggle;
     // Keep MQTT alive during long dispenses
     mqttClient.loop();
