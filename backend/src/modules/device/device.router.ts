@@ -5,7 +5,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { prisma } from '../../config/prisma';
 import { env } from '../../config/env';
 import { authenticate } from '../../middleware/auth.middleware';
-import { getMqttConnectionStatus } from '../mqtt/mqtt.service';
+import { getMqttConnectionStatus, releaseDispensingLock, getIsDispensing } from '../mqtt/mqtt.service';
 
 export const deviceRouter = Router();
 
@@ -34,6 +34,7 @@ deviceRouter.get('/status', async (req: Request, res: Response, next: NextFuncti
             feedCooldownSeconds: env.feedCooldownSeconds,
           },
       mqttConnected: getMqttConnectionStatus(),
+      isDispensing: getIsDispensing(),
     });
   } catch (err) {
     next(err);
@@ -184,5 +185,22 @@ deviceRouter.get('/heartbeat', async (req: Request, res: Response, next: NextFun
     res.json({ heartbeat: device });
   } catch (err) {
     next(err);
+  }
+});
+
+// ─── Admin: force-release stuck dispensing lock ────────────────────────────────
+// POST /api/device/release-lock  (admin only)
+// Use this if the server's in-memory dispensing lock gets stuck (e.g. after a timeout race condition).
+deviceRouter.post('/release-lock', (req: Request, res: Response) => {
+  if (req.user?.role !== 'ADMIN') {
+    res.status(403).json({ error: 'Admin only' });
+    return;
+  }
+  const wasLocked = getIsDispensing();
+  if (wasLocked) {
+    releaseDispensingLock();
+    res.json({ message: 'Dispensing lock force-released. Feeder is ready.', wasLocked });
+  } else {
+    res.json({ message: 'No active dispensing lock found.', wasLocked });
   }
 });

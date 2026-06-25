@@ -268,6 +268,10 @@ export async function publishFeedCommandAndWait(
     const published = await publishFeedCommand(payload);
 
     if (!published) {
+      // publishFeedCommand may have failed without setting the lock — ensure it's clean
+      if (serverDispensingRequestId === payload.requestId) {
+        releaseDispensingLock();
+      }
       reject(new Error('Device is offline - MQTT not connected'));
       return;
     }
@@ -275,6 +279,11 @@ export async function publishFeedCommandAndWait(
     // Set timeout if device doesn't respond
     const timer = setTimeout(() => {
       pendingResponses.delete(payload.requestId);
+      // *** Critical fix: release the dispensing lock on timeout so future feeds aren't blocked ***
+      if (serverDispensingRequestId === payload.requestId) {
+        releaseDispensingLock();
+        logger.warn(`Dispensing lock auto-released after timeout for [${payload.requestId}]`);
+      }
       reject(new Error('Device response timeout - check if Arduino is online'));
     }, customTimeoutMs);
 

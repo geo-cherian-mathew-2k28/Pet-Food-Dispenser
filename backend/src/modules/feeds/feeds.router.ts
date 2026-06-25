@@ -26,7 +26,22 @@ feedsRouter.post('/now', async (req: Request, res: Response, next: NextFunction)
       portion,
     });
 
-    res.status(result.success ? 200 : 400).json(result);
+    if (result.success) {
+      res.status(200).json(result);
+      return;
+    }
+
+    // Map failure reasons to appropriate HTTP status codes
+    const msg = result.message.toLowerCase();
+    if (msg.includes('dispensing') || msg.includes('cooling down') || msg.includes('daily feed limit')) {
+      // Business-logic rejection (rate-limit / cooldown / busy) — not a client error
+      res.status(429).json(result);
+    } else if (msg.includes('offline') || msg.includes('timeout')) {
+      // Device unreachable
+      res.status(503).json(result);
+    } else {
+      res.status(400).json(result);
+    }
   } catch (err) {
     next(err);
   }
