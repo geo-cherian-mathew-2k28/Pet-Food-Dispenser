@@ -229,31 +229,38 @@ export default function AdminPage() {
             Check the database state for the feeder's daily limit and current count, or reset today's failed/pending feeds.
           </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
-            <div className="p-3 bg-white border border-gray-100 rounded-xl shadow-sm">
-              <div className="text-xs font-semibold text-gray-400">Effective Daily Limit</div>
-              <div className="text-2xl font-black text-gray-800 mt-1">
-                {debugInfo.effectiveLimit !== undefined ? debugInfo.effectiveLimit : 'Loading...'}
-              </div>
-              <div className="text-xs text-gray-400 mt-0.5">From database: {debugInfo.device?.maxFeedsPerDay ?? 'None'} (env: {debugInfo.envMaxFeedsPerDay})</div>
+          {debugInfo.error ? (
+            <div className="p-3 mb-5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-1.5 font-semibold">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{debugInfo.error}</span>
             </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
+              <div className="p-3 bg-white border border-gray-100 rounded-xl shadow-sm">
+                <div className="text-xs font-semibold text-gray-400">Effective Daily Limit</div>
+                <div className="text-2xl font-black text-gray-800 mt-1">
+                  {debugInfo.effectiveLimit !== undefined ? debugInfo.effectiveLimit : 'Loading...'}
+                </div>
+                <div className="text-xs text-gray-400 mt-0.5">From database: {debugInfo.device?.maxFeedsPerDay ?? 'None'} (env: {debugInfo.envMaxFeedsPerDay})</div>
+              </div>
 
-            <div className="p-3 bg-white border border-gray-100 rounded-xl shadow-sm">
-              <div className="text-xs font-semibold text-gray-400">Today's Success Count</div>
-              <div className="text-2xl font-black text-green-600 mt-1">
-                {debugInfo.todaySuccessCount !== undefined ? debugInfo.todaySuccessCount : 'Loading...'}
+              <div className="p-3 bg-white border border-gray-100 rounded-xl shadow-sm">
+                <div className="text-xs font-semibold text-gray-400">Today's Success Count</div>
+                <div className="text-2xl font-black text-green-600 mt-1">
+                  {debugInfo.todaySuccessCount !== undefined ? debugInfo.todaySuccessCount : 'Loading...'}
+                </div>
+                <div className="text-xs text-gray-400 mt-0.5">Logs marked as SUCCESS</div>
               </div>
-              <div className="text-xs text-gray-400 mt-0.5">Logs marked as SUCCESS</div>
-            </div>
 
-            <div className="p-3 bg-white border border-gray-100 rounded-xl shadow-sm">
-              <div className="text-xs font-semibold text-gray-400">Today's Pending Count</div>
-              <div className="text-2xl font-black text-amber-600 mt-1">
-                {debugInfo.todayPendingCount !== undefined ? debugInfo.todayPendingCount : 'Loading...'}
+              <div className="p-3 bg-white border border-gray-100 rounded-xl shadow-sm">
+                <div className="text-xs font-semibold text-gray-400">Today's Pending Count</div>
+                <div className="text-2xl font-black text-amber-600 mt-1">
+                  {debugInfo.todayPendingCount !== undefined ? debugInfo.todayPendingCount : 'Loading...'}
+                </div>
+                <div className="text-xs text-gray-400 mt-0.5">Logs in PENDING state (waiting or timed out)</div>
               </div>
-              <div className="text-xs text-gray-400 mt-0.5">Logs in PENDING state (waiting or timed out)</div>
             </div>
-          </div>
+          )}
 
           <div className="flex flex-wrap items-center gap-4">
             <button
