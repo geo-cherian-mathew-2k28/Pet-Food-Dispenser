@@ -241,20 +241,40 @@ uint8_t FRAME_CHECK[8][12] = {
 
 // =============================================================================
 //  LED Helpers
+//  The installed library (renesas_uno 1.6) only has loadFrame(uint32_t[3]).
+//  loadMatrix() converts our readable uint8_t[8][12] bitmaps to uint32_t[3]
+//  on-the-fly using the correct bit packing:
+//    flat = row*12 + col  (0-95)
+//    word = flat / 32     (0,1,2)
+//    bit  = 31 - flat%32  (MSB = top-left LED)
 // =============================================================================
+void loadMatrix(uint8_t frame[8][12]) {
+  uint32_t buf[3] = {0, 0, 0};
+  for (int row = 0; row < 8; row++) {
+    for (int col = 0; col < 12; col++) {
+      if (frame[row][col]) {
+        int flat = row * 12 + col;
+        int word = flat / 32;
+        int bit  = 31 - (flat % 32);
+        buf[word] |= (1UL << bit);
+      }
+    }
+  }
+  matrix.loadFrame(buf);
+}
+
 void showFrame(uint8_t frame[8][12]) {
-  matrix.loadFrame(frame);
+  loadMatrix(frame);
 }
 
 void blinkFrame(uint8_t frame[8][12], int times, int delayMs) {
   for (int i = 0; i < times; i++) {
-    matrix.loadFrame(frame);
+    loadMatrix(frame);
     delay(delayMs);
-    matrix.loadFrame(FRAME_IDLE);
+    loadMatrix(FRAME_IDLE);
     delay(delayMs);
   }
 }
-
 
 // =============================================================================
 //  MQTT Topic Strings  (built in setup())
