@@ -94,6 +94,61 @@ deviceRouter.post('/settings', async (req: Request, res: Response, next: NextFun
   }
 });
 
+// ─── Debug: show DB values + today's feed count ───────────────────────────────
+// GET /api/device/debug  (admin only)
+deviceRouter.get('/debug', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (req.user?.role !== 'ADMIN') {
+      res.status(403).json({ error: 'Admin only' });
+      return;
+    }
+    const device = await prisma.deviceStatus.findUnique({ where: { id: 'device-1' } });
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const successCount = await prisma.feedLog.count({
+      where: { createdAt: { gte: todayStart }, status: 'SUCCESS' },
+    });
+    const pendingCount = await prisma.feedLog.count({
+      where: { createdAt: { gte: todayStart }, status: 'PENDING' },
+    });
+    res.json({
+      device,
+      envMaxFeedsPerDay: env.maxFeedsPerDay,
+      effectiveLimit: device?.maxFeedsPerDay ?? env.maxFeedsPerDay,
+      todaySuccessCount: successCount,
+      todayPendingCount: pendingCount,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── Admin: reset today's non-success logs ────────────────────────────────────
+// POST /api/device/reset-today  (admin only)
+deviceRouter.post('/reset-today', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (req.user?.role !== 'ADMIN') {
+      res.status(403).json({ error: 'Admin only' });
+      return;
+    }
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const result = await prisma.feedLog.updateMany({
+      where: {
+        createdAt: { gte: todayStart },
+        status: { in: ['PENDING', 'FAILED'] },
+      },
+      data: { status: 'FAILED', message: 'Manually reset by admin', completedAt: new Date() },
+    });
+    const successCount = await prisma.feedLog.count({
+      where: { createdAt: { gte: todayStart }, status: 'SUCCESS' },
+    });
+    res.json({ message: `Reset ${result.count} logs. Today's SUCCESS count: ${successCount}` });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ─── Last Heartbeat ───────────────────────────────────────────────────────────
 // GET /api/device/heartbeat
 deviceRouter.get('/heartbeat', async (req: Request, res: Response, next: NextFunction) => {

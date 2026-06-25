@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
-import { Trash2, Shield, User, AlertCircle, RefreshCw, Mail, MessageSquare, Settings, CheckCircle2, Loader2, AlertTriangle } from 'lucide-react';
+import { Trash2, Shield, User, AlertCircle, RefreshCw, Mail, MessageSquare, Settings, CheckCircle2, Loader2, AlertTriangle, Bug, RotateCcw } from 'lucide-react';
 
 interface UserItem {
   id: string;
@@ -31,6 +31,11 @@ export default function AdminPage() {
   const [savingLimit, setSavingLimit] = useState(false);
   const [limitMessage, setLimitMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // Debug
+  const [debugInfo, setDebugInfo] = useState<any>(null);
+  const [resetting, setResetting] = useState(false);
+  const [resetMessage, setResetMessage] = useState('');
+
   const fetchUsers = async () => {
     setLoading(true);
     setError('');
@@ -52,8 +57,33 @@ export default function AdminPage() {
     }
   };
 
+  const fetchDebug = async () => {
+    try {
+      const res = await api.get('/device/debug');
+      setDebugInfo(res.data);
+    } catch (err: any) {
+      setDebugInfo({ error: err.response?.data?.error || 'Failed to fetch debug info' });
+    }
+  };
+
+  const handleResetToday = async () => {
+    if (!confirm('This will mark all of today\'s PENDING/FAILED logs as resolved so the feed count resets. Continue?')) return;
+    setResetting(true);
+    setResetMessage('');
+    try {
+      const res = await api.post('/device/reset-today', {});
+      setResetMessage(res.data.message);
+      fetchDebug();
+    } catch (err: any) {
+      setResetMessage(err.response?.data?.error || 'Reset failed');
+    } finally {
+      setResetting(false);
+    }
+  };
+
   useEffect(() => {
     fetchUsers();
+    fetchDebug();
   }, []);
 
   const handleDeleteUser = async (id: string, name: string) => {
@@ -187,6 +217,73 @@ export default function AdminPage() {
           </div>
         )}
       </div>
+
+      {/* ── Debug & Reset Section ────────────────────────────────────────── */}
+      {debugInfo && (
+        <div className="card p-6 border border-amber-100 bg-amber-50/10">
+          <div className="flex items-center gap-2 mb-1">
+            <Bug className="w-5 h-5 text-amber-600" />
+            <h2 className="font-bold text-gray-900 text-lg">Diagnostics & Limit Reset</h2>
+          </div>
+          <p className="text-xs text-gray-500 mb-5">
+            Check the database state for the feeder's daily limit and current count, or reset today's failed/pending feeds.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
+            <div className="p-3 bg-white border border-gray-100 rounded-xl shadow-sm">
+              <div className="text-xs font-semibold text-gray-400">Effective Daily Limit</div>
+              <div className="text-2xl font-black text-gray-800 mt-1">
+                {debugInfo.effectiveLimit !== undefined ? debugInfo.effectiveLimit : 'Loading...'}
+              </div>
+              <div className="text-xs text-gray-400 mt-0.5">From database: {debugInfo.device?.maxFeedsPerDay ?? 'None'} (env: {debugInfo.envMaxFeedsPerDay})</div>
+            </div>
+
+            <div className="p-3 bg-white border border-gray-100 rounded-xl shadow-sm">
+              <div className="text-xs font-semibold text-gray-400">Today's Success Count</div>
+              <div className="text-2xl font-black text-green-600 mt-1">
+                {debugInfo.todaySuccessCount !== undefined ? debugInfo.todaySuccessCount : 'Loading...'}
+              </div>
+              <div className="text-xs text-gray-400 mt-0.5">Logs marked as SUCCESS</div>
+            </div>
+
+            <div className="p-3 bg-white border border-gray-100 rounded-xl shadow-sm">
+              <div className="text-xs font-semibold text-gray-400">Today's Pending Count</div>
+              <div className="text-2xl font-black text-amber-600 mt-1">
+                {debugInfo.todayPendingCount !== undefined ? debugInfo.todayPendingCount : 'Loading...'}
+              </div>
+              <div className="text-xs text-gray-400 mt-0.5">Logs in PENDING state (waiting or timed out)</div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-4">
+            <button
+              onClick={handleResetToday}
+              disabled={resetting}
+              className="btn-secondary text-sm font-semibold gap-1.5 py-2 border border-gray-200 bg-white hover:bg-gray-50 text-gray-700"
+            >
+              {resetting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RotateCcw className="w-4 h-4" />
+              )}
+              <span>Reset Today's Non-Success Logs</span>
+            </button>
+            <button
+              onClick={fetchDebug}
+              className="btn-ghost text-xs text-gray-500 font-semibold gap-1 py-1"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Refresh Stats</span>
+            </button>
+          </div>
+
+          {resetMessage && (
+            <div className="mt-3 p-3 rounded-xl bg-amber-50 text-amber-800 border border-amber-100 text-xs font-semibold">
+              {resetMessage}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── User Management ─────────────────────────────────────────────────── */}
       {loading ? (
