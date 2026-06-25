@@ -3,7 +3,13 @@
 
 import { prisma } from '../../config/prisma';
 import { env } from '../../config/env';
-import { publishFeedCommandAndWait, getIsDispensing } from '../mqtt/mqtt.service';
+import {
+  publishFeedCommandAndWait,
+  getIsDispensing,
+  getMqttConnectionStatus,
+  releaseDispensingLock,
+} from '../mqtt/mqtt.service';
+import { isLockStale, clearLockTimestamp } from '../../utils/dispensingLock';
 import { generateRequestId } from '../../utils/requestId';
 import { logger } from '../../utils/logger';
 
@@ -30,22 +36,31 @@ export async function triggerFeed(req: FeedRequest): Promise<FeedResult> {
   const { source, userId, userName, portion = 1 } = req;
   const requestId = generateRequestId();
 
-  // ── 0. Simultaneous feed guard ─────────────────────────────────────────────
-  // Prevents two users/sources from triggering a feed at the same time
+  // ── 0a. Auto-expire a stale lock ──────────────────────────────────────────
+  // If the lock has been held for more than 30s (the LOCK_MAX_AGE_MS threshold),
+  // it means the timeout in publishFeedCommandAndWait failed to release it.
+  // This is the last-resort safety valve.
+  if (isLockStale()) {
+    logger.warn('Stale dispensing lock detected — force-releasing before new request.');
+    releaseDispensingLock();
+    clearLockTimestamp();
+  }
+
+  // ── 0b. Check MQTT connectivity BEFORE trying anything ───────────────────
+  // If MQTT isn't connected, no command can ever reach the Arduino.
+  // Fail fast with a clear user-facing message instead of holding the lock for 20s.
+  if (!getMqttConnectionStatus()) {
+    logger.warn('Feed rejected: MQTT broker not connected');
+    return {
+      success: false,
+      message: 'Cannot reach the feeder — MQTT broker is not connected. Please wait a moment.',
+      requestId,
+    };
+  }
+
+  // ── 0c. Simultaneous feed guard ────────────────────────────────────────────
   if (getIsDispensing()) {
     logger.warn('Feed rejected: device is already dispensing');
-    await prisma.feedLog.create({
-      data: {
-        source,
-        status: 'FAILED',
-        portion,
-        userId,
-        userName,
-        requestId,
-        message: 'Another feed is already in progress. Please wait.',
-        completedAt: new Date(),
-      },
-    });
     return {
       success: false,
       message: 'The feeder is currently dispensing. Please wait a moment before trying again.',
@@ -53,53 +68,26 @@ export async function triggerFeed(req: FeedRequest): Promise<FeedResult> {
     };
   }
 
-  // ── 1. Check daily feed limit ──────────────────────────────────────────────
+  // ── 1. Clean up stale PENDING feeds in the DB ─────────────────────────────
+  const staleThreshold = new Date(Date.now() - 60_000);
+  await prisma.feedLog.updateMany({
+    where: { status: 'PENDING', createdAt: { lt: staleThreshold } },
+    data: { status: 'FAILED', message: 'Timed out — no response from device', completedAt: new Date() },
+  });
+
+  // ── 2. Check daily feed limit ──────────────────────────────────────────────
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
-  // Clean up stale PENDING feeds (older than 60s) — these are stuck from offline/timeout
-  const staleThreshold = new Date(Date.now() - 60_000);
-  await prisma.feedLog.updateMany({
-    where: {
-      status: 'PENDING',
-      createdAt: { lt: staleThreshold },
-    },
-    data: {
-      status: 'FAILED',
-      message: 'Timed out — no response from device',
-      completedAt: new Date(),
-    },
-  });
-
-  const device = await prisma.deviceStatus.findUnique({
-    where: { id: 'device-1' },
-  });
-  // Only count SUCCESS feeds — PENDING are in-flight; FAILED should never block future feeds
+  const device = await prisma.deviceStatus.findUnique({ where: { id: 'device-1' } });
   const maxFeeds = device?.maxFeedsPerDay ?? env.maxFeedsPerDay;
 
   const todayFeedCount = await prisma.feedLog.count({
-    where: {
-      createdAt: { gte: todayStart },
-      status: 'SUCCESS',
-    },
+    where: { createdAt: { gte: todayStart }, status: 'SUCCESS' },
   });
 
   if (todayFeedCount >= maxFeeds) {
-    logger.warn(`Feed rejected: daily limit of ${maxFeeds} reached (${todayFeedCount} successful feeds today)`);
-
-    await prisma.feedLog.create({
-      data: {
-        source,
-        status: 'FAILED',
-        portion,
-        userId,
-        userName,
-        requestId,
-        message: `Daily feed limit of ${maxFeeds} reached`,
-        completedAt: new Date(),
-      },
-    });
-
+    logger.warn(`Feed rejected: daily limit of ${maxFeeds} reached (${todayFeedCount} today)`);
     return {
       success: false,
       message: `Daily feed limit of ${maxFeeds} reached. Try again tomorrow.`,
@@ -107,7 +95,7 @@ export async function triggerFeed(req: FeedRequest): Promise<FeedResult> {
     };
   }
 
-  // ── 2. Check cooldown ──────────────────────────────────────────────────────
+  // ── 3. Check cooldown ──────────────────────────────────────────────────────
   const lastSuccessfulFeed = await prisma.feedLog.findFirst({
     where: { status: 'SUCCESS' },
     orderBy: { completedAt: 'desc' },
@@ -118,20 +106,6 @@ export async function triggerFeed(req: FeedRequest): Promise<FeedResult> {
     if (elapsedSeconds < env.feedCooldownSeconds) {
       const waitSeconds = Math.ceil(env.feedCooldownSeconds - elapsedSeconds);
       logger.warn(`Feed rejected: cooldown active, ${waitSeconds}s remaining`);
-
-      await prisma.feedLog.create({
-        data: {
-          source,
-          status: 'FAILED',
-          portion,
-          userId,
-          userName,
-          requestId,
-          message: `Cooldown active. Wait ${waitSeconds} seconds before feeding again.`,
-          completedAt: new Date(),
-        },
-      });
-
       return {
         success: false,
         message: `Feeder is cooling down. Please wait ${waitSeconds} seconds.`,
@@ -140,7 +114,7 @@ export async function triggerFeed(req: FeedRequest): Promise<FeedResult> {
     }
   }
 
-  // ── 3. Create PENDING feed log ─────────────────────────────────────────────
+  // ── 4. Create PENDING feed log ─────────────────────────────────────────────
   const feedLog = await prisma.feedLog.create({
     data: {
       source,
@@ -153,7 +127,7 @@ export async function triggerFeed(req: FeedRequest): Promise<FeedResult> {
     },
   });
 
-  // ── 4. Publish MQTT command and wait for response ──────────────────────────
+  // ── 5. Publish MQTT command and wait for response ──────────────────────────
   try {
     const response = await publishFeedCommandAndWait({
       requestId,
@@ -175,11 +149,7 @@ export async function triggerFeed(req: FeedRequest): Promise<FeedResult> {
 
     await prisma.feedLog.update({
       where: { id: feedLog.id },
-      data: {
-        status: 'FAILED',
-        message: errorMessage,
-        completedAt: new Date(),
-      },
+      data: { status: 'FAILED', message: errorMessage, completedAt: new Date() },
     });
 
     return {

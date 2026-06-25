@@ -5,6 +5,7 @@ import mqtt, { MqttClient } from 'mqtt';
 import { env } from '../../config/env';
 import { logger } from '../../utils/logger';
 import { prisma } from '../../config/prisma';
+import { recordLockAcquired, clearLockTimestamp } from '../../utils/dispensingLock';
 
 // ─── MQTT Topic Constants ─────────────────────────────────────────────────────
 export const TOPICS = {
@@ -210,6 +211,7 @@ export async function publishFeedCommand(payload: {
   // Set dispensing lock
   isServerDispensing = true;
   serverDispensingRequestId = payload.requestId;
+  recordLockAcquired(); // start the stale-lock timer
 
   // Fetch configured servo open duration from DB
   let durationMs = 1500;
@@ -312,6 +314,7 @@ export function getIsDispensing(): boolean {
 export function releaseDispensingLock(): void {
   isServerDispensing = false;
   serverDispensingRequestId = '';
+  clearLockTimestamp();
   logger.warn('Dispensing lock force-released');
 }
 
