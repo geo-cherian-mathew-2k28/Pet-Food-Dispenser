@@ -163,7 +163,7 @@ async function handleDeviceResponse(data: DeviceResponse): Promise<void> {
 
   // Update feed log with the response
   try {
-    await prisma.feedLog.update({
+    const result = await prisma.feedLog.updateMany({
       where: { requestId },
       data: {
         status: status === 'success' ? 'SUCCESS' : 'FAILED',
@@ -171,7 +171,11 @@ async function handleDeviceResponse(data: DeviceResponse): Promise<void> {
         completedAt: new Date(),
       },
     });
-    logger.info(`Feed response [${requestId}]: ${status} - ${message}`);
+    if (result.count > 0) {
+      logger.info(`Feed response [${requestId}]: ${status} - ${message}`);
+    } else {
+      logger.debug(`Feed response [${requestId}] received, but no matching DB record was found (likely a manual/serial test).`);
+    }
   } catch (err) {
     logger.error(`Failed to update feed log for requestId ${requestId}:`, err);
   }
