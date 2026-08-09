@@ -36,17 +36,17 @@ ArduinoLEDMatrix matrix;
 //  ⚙️  USER CONFIGURATION — Change only these values
 // =============================================================================
 
-char WIFI_SSID[]     = "Mullananickal KvFi";
-char WIFI_PASSWORD[] = "geo@6756";
+char WIFI_SSID[]     = "YOUR_WIFI_SSID";
+char WIFI_PASSWORD[] = "YOUR_WIFI_PASSWORD";
 
 // ── MQTT ──────────────────────────────────────────────────────────────────────
 #define USE_TLS false
 
 #if USE_TLS
-  const char MQTT_BROKER[] = "1929ae9bc33d4ba29b4aa4f909c3ef85.s1.eu.hivemq.cloud";
-  const int  MQTT_PORT     = 8883;
-  const char MQTT_USERNAME[] = "geo123";
-  const char MQTT_PASSWORD[] = "GeoCatFeeder2026";
+  const char MQTT_BROKER[]   = "YOUR_MQTT_BROKER_HOST.s1.eu.hivemq.cloud";
+  const int  MQTT_PORT       = 8883;
+  const char MQTT_USERNAME[] = "YOUR_MQTT_USERNAME";
+  const char MQTT_PASSWORD[] = "YOUR_MQTT_PASSWORD";
 #else
   const char MQTT_BROKER[]   = "broker.emqx.io";
   const int  MQTT_PORT       = 1883;
