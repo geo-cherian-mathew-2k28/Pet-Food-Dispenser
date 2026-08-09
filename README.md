@@ -163,6 +163,9 @@ npm run dev
 
 ---
 
-## 📜 License
+## 🤝 Community & Governance
 
-Distributed under the **MIT License**. Free for educational, hobby, and commercial modification.
+- 📜 **[License](LICENSE)**: Released under the **MIT License**. Free for educational, hobby, and commercial use.
+- 🤝 **[Contributing Guidelines](CONTRIBUTING.md)**: Interested in contributing? Read our step-by-step guide on bug reporting, pull requests, and development environment setup.
+- 📜 **[Code of Conduct](CODE_OF_CONDUCT.md)**: We are committed to fostering a welcoming and harassment-free community. Read the Contributor Covenant standards.
+
