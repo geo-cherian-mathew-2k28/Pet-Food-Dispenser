@@ -1,297 +1,168 @@
-# feedy
+# SmartCat Feeder — Open IoT Telemetry & Food Dispenser
 
-> An automatic IoT cat food dispenser built with Arduino UNO R4 WiFi, MQTT, Node.js, React, and a Telegram bot — using 100% free tools and DIY cardboard hardware.
-
-⚠️ **Hobby Prototype Notice:** This is not a certified pet safety device. Test thoroughly before leaving with a real cat.
+> A production-grade, event-driven IoT Pet Food Dispenser powered by **Arduino UNO R4 WiFi**, **MQTT Pub/Sub over TLS**, **Node.js Express**, **React 19**, and **Telegram Bot Integration**. Built for real-time remote telemetry, scheduled automated feeding, and strict security validation.
 
 ---
 
-## Features
+## 🌟 Key Features
 
-- **Feed Now** from web dashboard with one click (no emojis)
-- **Scheduled feeding** with day-of-week and time configuration
-- **Telegram bot** for remote control: `/feed`, `/status`, `/history`, and admin commands
-- **MQTT device communication** over TLS (HiveMQ Cloud free tier)
-- **Real-time device status** via 30-second heartbeat
-- **Feed history** with charts, mobile card view, filters, and export
-- **JWT login system** with bcrypt password hashing
-- **Safety limits**: cooldown between feeds, dynamic max daily feeds (configurable via Telegram by admin)
-- **Cardboard dispenser** built from free/cheap materials
+- **Instant Event-Driven Feeding**: Sub-second remote feeding via web app or Telegram bot.
+- **Bi-Directional MQTT Pub/Sub**: Real-time two-way communication between cloud backend and micro-controllers.
+- **Admin Visibility Control**: Toggle Architecture & Telemetry visibility for non-admin users directly from the Admin Panel.
+- **7-Layer Security Safeguards**: Topic isolation, payload size limits (2KB), regex request ID validation, duplicate deduplication, and TLS 1.2 encryption.
+- **Multi-Client Support**: Scalable Pub/Sub model supporting multiple administrative web instances, mobile devices, and physical hardware nodes.
+- **Automated Cron Scheduling**: Configurable daily feeding schedules with timezone awareness and database persistence.
+- **Built-in Hardware Matrix Display**: Animated LED feedback on the Arduino UNO R4 WiFi (Connecting, WiFi OK, MQTT Happy Face, Dispensing, Error).
 
 ---
 
-## Architecture
+## 📐 System Architecture & Flowchart
+
+### 1. High-Level End-to-End Architecture
 
 ```
-Web Dashboard (React + Vite)
-         │
-         │ HTTP / REST API
-         ▼
-Backend API (Express + TypeScript)  ←→  PostgreSQL (Supabase)
-         │
-         │ MQTT over TLS
-         ▼
-    MQTT Broker (HiveMQ Cloud)
-         │
-         │ MQTT Subscribe
-         ▼
-Arduino UNO R4 WiFi
-         │
-         ▼
-    Servo Motor
-         │
-         ▼
-Cardboard Food Dispenser → Bowl
+┌────────────────────────────────┐       ┌────────────────────────────────┐
+│   React 19 Web Dashboard       │       │    Telegram Bot Interface      │
+│   (Vite + Tailwind + Recharts) │       │   (Telegraf Command Guard)     │
+└───────────────┬────────────────┘       └───────────────┬────────────────┘
+                │                                        │
+                │ HTTP REST / JWT                        │ HTTPS Webhooks
+                ▼                                        ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                 Node.js Express API Server (Backend)                    │
+│   • Auth & Role Check          • 60s Cooldown Guard                     │
+│   • Daily Feed Limit Check     • Dual In-Memory Dispensing Lock         │
+└───────────────┬────────────────────────────────────────┬────────────────┘
+                │                                        │
+                │ PostgreSQL (Prisma ORM)                │ MQTTS (QoS 1 over TLS 8883)
+                ▼                                        ▼
+┌────────────────────────────────┐       ┌────────────────────────────────┐
+│      Supabase PostgreSQL       │       │     HiveMQ Cloud MQTT Broker    │
+│  (Users, Feeds, Schedules, DB) │       │  (Pub/Sub Packet Router)       │
+└────────────────────────────────┘       └───────────────┬────────────────┘
+                                                         │
+                                                         │ MQTTS Topic Delivery
+                                                         ▼
+                                         ┌────────────────────────────────┐
+                                         │     Arduino UNO R4 WiFi        │
+                                         │  (Firmware + LED Matrix 12×8)  │
+                                         └───────────────┬────────────────┘
+                                                         │
+                                                         │ PWM Signal (Pin D9)
+                                                         ▼
+                                         ┌────────────────────────────────┐
+                                         │     SG90 Servo Dispenser       │
+                                         │  (0° → 160° Open → 0° Closed)  │
+                                         └────────────────────────────────┘
 ```
 
 ---
 
-## Tech Stack
+### 2. Two-Way MQTT Pub/Sub Flowchart (Many-to-Many Topology)
 
-| Layer | Technology |
-|---|---|
-| Frontend | React, Vite, TypeScript, Tailwind CSS, Recharts |
-| Backend | Node.js, Express, TypeScript, Prisma ORM |
-| Database | PostgreSQL via Supabase (free) |
-| MQTT Broker | HiveMQ Cloud free tier |
-| Scheduler | node-cron |
-| Telegram Bot | Telegraf |
-| Hardware | Arduino UNO R4 WiFi, SG90 servo |
-| Auth | JWT + bcrypt |
+```
+                       [ PUBLISHERS ]                                             [ SUBSCRIBERS ]
+  
+  ┌──────────────────────┐
+  │  Web Dashboard #1    │───┐
+  └──────────────────────┘   │
+                             │  HTTP POST
+  ┌──────────────────────┐   ├───► ┌─────────────────────────┐             ┌─────────────────────────┐
+  │  Mobile Dashboard    │───┤     │ Node.js Backend Server  │  Publish    │   HiveMQ Cloud Broker   │
+  └──────────────────────┘   │     │ (Validates & Enforces)  │────────────►│   (Central MQTTS Router)│
+                             │     └─────────────────────────┘             └────────────┬────────────┘
+  ┌──────────────────────┐   │           ▲                                              │
+  │   Telegram Bot       │───┘           │                                              │ Topic Delivery
+  └──────────────────────┘               │                                              │ smartcat/device/command
+                                         │                                              ▼
+                                         │                                 ┌─────────────────────────┐
+                                         │                                 │   Arduino UNO R4 #1     │
+                                         │                                 │ (Hardware Feeder Node)  │
+                                         │                                 └────────────┬────────────┘
+                                         │                                              │
+                                         │  Publish ACK Response                        │ Executes Motor
+                                         │  smartcat/device/response                    ▼
+                                         └───────────────────────────────── ┌─────────────────────────┐
+                                                                            │ SG90 Servo Dispense Door│
+                                                                            └─────────────────────────┘
+```
 
 ---
 
-## Free Services Used
+### 3. Topic Architecture Directory
 
-| Service | Purpose | Free Tier |
+| Topic Direction | MQTT Topic Address | QoS | Description |
+|---|---|---|---|
+| **Server ➔ Feeder** | `smartcat/device/command` | `1` | Delivers JSON payload `{ "command": "feed", "durationMs": 1500, "requestId": "..." }` |
+| **Feeder ➔ Server** | `smartcat/device/response` | `1` | Hardware ACK response returning `{ "requestId": "...", "status": "success", "servoAngle": 160 }` |
+| **Feeder ➔ Server** | `smartcat/device/heartbeat` | `0` | Telemetry pulse every 25s containing `{ "uptimeSeconds": 3600, "wifiStrength": -55 }` |
+
+---
+
+## 🛠️ Technology Stack
+
+| Layer | Component | Technology / Library |
 |---|---|---|
-| [Supabase](https://supabase.com) | PostgreSQL database | 500MB, unlimited API |
-| [HiveMQ Cloud](https://www.hivemq.com/mqtt-cloud-broker/) | MQTT broker | 100 connections, TLS |
-| [Telegram](https://core.telegram.org/bots) | Bot API | Completely free |
-| [Vercel](https://vercel.com) | Frontend hosting | Free tier |
-| [Render](https://render.com) | Backend hosting | Free tier (sleeps after inactivity) |
-| [GitHub](https://github.com) | Version control | Free |
+| **Frontend** | User Dashboard | React 19, Vite, TypeScript, Tailwind CSS, Lucide Icons, Axios |
+| **Backend** | REST & MQTT Engine | Node.js, Express, TypeScript, Prisma ORM, MQTT.js, Winston |
+| **Database** | Relational Database | PostgreSQL (Supabase Free Tier) |
+| **Messaging** | Cloud MQTT Broker | HiveMQ Cloud (TLS / Port 8883) |
+| **Hardware** | Micro-controller | Arduino UNO R4 WiFi (`WiFiS3`, `PubSubClient`, `ArduinoJson`, `Servo`) |
+| **Bot** | Remote Operations | Telegraf Telegram Bot Framework |
 
 ---
 
-## Project Structure
+## 🔒 7-Layer Security Shield
 
-```
-smart-cat-feeder/
-  frontend/           ← React + Vite dashboard
-  backend/            ← Express + TypeScript API
-    src/
-      modules/        ← auth, feeds, schedules, device, mqtt, telegram
-      middleware/     ← auth, error handling
-      config/         ← env, prisma
-      utils/          ← logger, requestId
-    prisma/           ← schema.prisma
-  arduino/
-    smartcat_feeder/
-      smartcat_feeder.ino  ← Complete Arduino firmware
-  HARDWARE.md         ← Wiring and cardboard dispenser build guide
-  MQTT.md             ← MQTT protocol documentation
-  API.md              ← REST API reference
-  README.md           ← This file
-  docker-compose.yml  ← Local dev with PostgreSQL + MQTT
-  .env.example        ← Environment variable template
-```
+1. **Namespace Topic Isolation**: Device topics strictly partitioned under `smartcat/{namespace}/device/*`.
+2. **Command Whitelisting**: Firmware drops all non-whitelisted payload strings (only accepts `"command": "feed"`).
+3. **2KB Payload Size Cap**: Prevents memory buffer overflow and DoS attacks by dropping oversized MQTT packets.
+4. **Dual Dispensing Locks**: Prevents race conditions or double-feeding exploits using server-side and board-side locks.
+5. **30s Request Deduplication**: Micro-controller tracks executed `requestId`s to reject replayed duplicate commands.
+6. **120s Watchdog Quarantine**: Automatically marks hardware `OFFLINE` if 2 heartbeats are missed.
+7. **TLS 1.2 MQTTS Encryption**: Encrypted socket communication on port `8883`.
 
 ---
 
-## Setup Guide
+## 🚀 Quick Start Guide
 
-### 1. Prerequisites
-
-- Node.js 18+
-- Arduino IDE 2.x
-- Git
-
----
-
-### 2. Clone & Install
+### 1. Repository Setup
 
 ```bash
-git clone https://github.com/yourusername/smart-cat-feeder.git
-cd smart-cat-feeder
+git clone https://github.com/geo-cherian-mathew-2k28/Pet-Food-Dispenser.git
+cd Pet-Food-Dispenser
 ```
 
----
-
-### 3. Supabase Database Setup (Free)
-
-1. Go to [supabase.com](https://supabase.com) and create a free account
-2. Create a new project
-3. Go to **Settings → Database → Connection String (URI)**
-4. Copy the connection string
-5. Replace `[YOUR-PASSWORD]` with your actual password
-
----
-
-### 4. HiveMQ Cloud MQTT Setup (Free)
-
-1. Go to [hivemq.com/mqtt-cloud-broker](https://www.hivemq.com/mqtt-cloud-broker/)
-2. Sign up for free
-3. Create a cluster
-4. Go to **Access Management → Create Credentials**
-5. Note: `your-cluster.s1.eu.hivemq.cloud`, port `8883`, username, and password
-
----
-
-### 5. Telegram Bot Setup (Free)
-
-1. Open Telegram and search for **@BotFather**
-2. Send `/newbot` and follow instructions
-3. Copy the bot token
-4. Find your Telegram chat ID by messaging **@userinfobot**
-
----
-
-### 6. Backend Setup
+### 2. Backend Setup
 
 ```bash
 cd backend
 cp .env.example .env
-# Fill in all values in .env
+# Configure DATABASE_URL, JWT_SECRET, and MQTT credentials in .env
 
 npm install
-npm run prisma:push     # Creates database tables
-npm run dev             # Starts development server on port 5000
+npm run prisma:push
+npm run dev
 ```
 
----
-
-### 7. Frontend Setup
+### 3. Frontend Setup
 
 ```bash
 cd frontend
 cp .env.example .env
-# .env already has: VITE_API_BASE_URL=http://localhost:5000/api
-
 npm install
-npm run dev             # Starts on http://localhost:5173
+npm run dev
 ```
 
----
+### 4. Arduino Firmware Upload
 
-### 8. Arduino Setup
-
-1. Open Arduino IDE
-2. Go to **Board Manager** → Install **Arduino UNO R4 Boards**
-3. Go to **Library Manager** → Install:
-   - `ArduinoMqttClient` by Arduino
-   - `ArduinoJson` by Benoit Blanchon
-4. Open `arduino/smartcat_feeder/smartcat_feeder.ino`
-5. Fill in your WiFi credentials and MQTT settings at the top of the file
-6. Select **Arduino UNO R4 WiFi** as board
-7. Click **Upload**
-8. Open **Serial Monitor** at 115200 baud
-9. Type `feed` to test servo movement
+1. Open `arduino/smartcat_feeder/smartcat_feeder.ino` in **Arduino IDE 2.x**.
+2. Select **Arduino UNO R4 WiFi** as your target board.
+3. Configure your Wi-Fi SSID and MQTT Broker credentials at the top of the sketch.
+4. Flash the board and open the **Serial Monitor (115200 baud)**.
 
 ---
 
-### 9. Hardware Setup
+## 📜 License
 
-See [HARDWARE.md](./HARDWARE.md) for:
-- Full wiring diagram
-- Cardboard dispenser build guide
-- Servo configuration
-- Testing steps
-- Troubleshooting
-
----
-
-## Local Development with Docker
-
-Start a local PostgreSQL and Mosquitto broker:
-
-```bash
-docker-compose up -d
-```
-
-This starts:
-- PostgreSQL on port 5432
-- Mosquitto MQTT on port 1883
-
-Update your backend `.env`:
-```env
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/smartcat
-MQTT_BROKER_HOST=localhost
-MQTT_BROKER_PORT=1883
-```
-
----
-
-## Deployment
-
-### Frontend → Vercel (Free)
-```bash
-cd frontend
-npm run build
-# Push to GitHub, connect repo to Vercel, done!
-```
-
-### Backend → Render (Free)
-1. Push to GitHub
-2. Create new Web Service on [render.com](https://render.com)
-3. Set environment variables in Render dashboard
-4. Deploy!
-
-> Note: Render free tier sleeps after 15min inactivity. Use [UptimeRobot](https://uptimerobot.com) (free) to ping it every 5 minutes.
-
----
-
-## Testing Guide
-
-### Test Web Feed
-1. Open dashboard at http://localhost:5173
-2. Log in
-3. Click **Feed Cat Now**
-4. Watch Arduino Serial Monitor for servo movement
-5. See feed log update in history
-
-### Test Telegram Feed
-1. Start the bot with `/start`
-2. Send `/feed`
-3. Watch servo rotate
-4. Send `/status` to check device
-
-### Test Schedule
-1. Go to **Schedules** page
-2. Create a schedule 2 minutes from now
-3. Watch the backend logs for cron execution
-4. Verify servo rotates and history updates
-
----
-
-## Common Errors
-
-| Error | Fix |
-|---|---|
-| `Missing required environment variable` | Fill in all values in `.env` |
-| `MQTT not connected` | Check HiveMQ credentials and host URL |
-| `Device response timeout` | Arduino is offline. Check WiFi + MQTT in Serial Monitor |
-| `Daily feed limit reached` | Wait until tomorrow or increase `MAX_FEEDS_PER_DAY` |
-| `Access denied` in Telegram | Add your chat ID to `TELEGRAM_ALLOWED_CHAT_IDS` |
-| Prisma schema error | Run `npm run prisma:push` again |
-
----
-
-## Safety Guidelines
-
-- ✅ Cooldown: 60 seconds minimum between feeds (configurable)
-- ✅ Daily limit: max 10 feeds per day (configurable)
-- ✅ Unknown Telegram users are denied access
-- ✅ Web dashboard requires login
-- ✅ MQTT credentials are never exposed to frontend
-- ✅ All inputs are validated with Zod
-- ⚠️ Test hardware before leaving with a real cat
-- ⚠️ Check food supply and dispenser daily
-
----
-
-## License
-
-MIT License — free to use, modify, and share.
-
-Built with ❤️ for cats and Arduino enthusiasts.
+Distributed under the **MIT License**. Free for educational, hobby, and commercial modification.

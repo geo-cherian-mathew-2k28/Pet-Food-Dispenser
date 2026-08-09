@@ -12,28 +12,29 @@ export const deviceRouter = Router();
 deviceRouter.use(authenticate);
 
 // ─── Device Status ────────────────────────────────────────────────────────────
+// ─── Device Status ────────────────────────────────────────────────────────────
 // GET /api/device/status
 deviceRouter.get('/status', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const device = await prisma.deviceStatus.findUnique({
-      where: { id: 'device-1' },
-    });
+    let device = await prisma.deviceStatus.findFirst();
+    if (!device) {
+      device = await prisma.deviceStatus.create({
+        data: {
+          id: 'device-1',
+          status: 'OFFLINE',
+          servoOpenDurationMs: 1500,
+          maxFeedsPerDay: env.maxFeedsPerDay,
+          showArchitectureToUsers: true,
+        },
+      });
+    }
 
     res.json({
-      device: device
-        ? { ...device, feedCooldownSeconds: env.feedCooldownSeconds, showArchitectureToUsers: device.showArchitectureToUsers ?? true }
-        : {
-            id: 'device-1',
-            status: 'OFFLINE',
-            lastHeartbeatAt: null,
-            uptimeSeconds: null,
-            wifiStrength: null,
-            lastMessage: 'No data received yet',
-            servoOpenDurationMs: 1500,
-            maxFeedsPerDay: env.maxFeedsPerDay,
-            feedCooldownSeconds: env.feedCooldownSeconds,
-            showArchitectureToUsers: true,
-          },
+      device: {
+        ...device,
+        feedCooldownSeconds: env.feedCooldownSeconds,
+        showArchitectureToUsers: device.showArchitectureToUsers ?? true,
+      },
       mqttConnected: getMqttConnectionStatus(),
       isDispensing: getIsDispensing(),
     });
@@ -93,17 +94,26 @@ deviceRouter.post('/settings', async (req: Request, res: Response, next: NextFun
       return;
     }
 
-    const device = await prisma.deviceStatus.upsert({
-      where: { id: 'device-1' },
-      update: updateData,
-      create: {
-        id: 'device-1',
-        status: 'OFFLINE',
-        servoOpenDurationMs: servoOpenDurationMs ?? 1500,
-        maxFeedsPerDay: maxFeedsPerDay ?? env.maxFeedsPerDay,
-        showArchitectureToUsers: showArchitectureToUsers ?? true,
-      },
-    });
+    let existingDevice = await prisma.deviceStatus.findFirst();
+    let device;
+
+    if (existingDevice) {
+      device = await prisma.deviceStatus.update({
+        where: { id: existingDevice.id },
+        data: updateData,
+      });
+    } else {
+      device = await prisma.deviceStatus.create({
+        data: {
+          id: 'device-1',
+          status: 'OFFLINE',
+          servoOpenDurationMs: servoOpenDurationMs ?? 1500,
+          maxFeedsPerDay: maxFeedsPerDay ?? env.maxFeedsPerDay,
+          showArchitectureToUsers: showArchitectureToUsers ?? true,
+          ...updateData,
+        },
+      });
+    }
 
     res.json({ message: 'Settings updated successfully', device });
   } catch (err) {
