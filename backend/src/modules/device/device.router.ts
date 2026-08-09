@@ -21,7 +21,7 @@ deviceRouter.get('/status', async (req: Request, res: Response, next: NextFuncti
 
     res.json({
       device: device
-        ? { ...device, feedCooldownSeconds: env.feedCooldownSeconds }
+        ? { ...device, feedCooldownSeconds: env.feedCooldownSeconds, showArchitectureToUsers: device.showArchitectureToUsers ?? true }
         : {
             id: 'device-1',
             status: 'OFFLINE',
@@ -32,6 +32,7 @@ deviceRouter.get('/status', async (req: Request, res: Response, next: NextFuncti
             servoOpenDurationMs: 1500,
             maxFeedsPerDay: env.maxFeedsPerDay,
             feedCooldownSeconds: env.feedCooldownSeconds,
+            showArchitectureToUsers: true,
           },
       mqttConnected: getMqttConnectionStatus(),
       isDispensing: getIsDispensing(),
@@ -45,9 +46,10 @@ deviceRouter.get('/status', async (req: Request, res: Response, next: NextFuncti
 // POST /api/device/settings
 // - servoOpenDurationMs: all authenticated users
 // - maxFeedsPerDay: admin only
+// - showArchitectureToUsers: admin only
 deviceRouter.post('/settings', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { servoOpenDurationMs, maxFeedsPerDay } = req.body;
+    const { servoOpenDurationMs, maxFeedsPerDay, showArchitectureToUsers } = req.body;
 
     // Validate servo duration if provided
     if (servoOpenDurationMs !== undefined) {
@@ -69,9 +71,22 @@ deviceRouter.post('/settings', async (req: Request, res: Response, next: NextFun
       }
     }
 
+    // showArchitectureToUsers is admin-only
+    if (showArchitectureToUsers !== undefined) {
+      if (req.user?.role !== 'ADMIN') {
+        res.status(403).json({ error: 'Only admins can change architecture visibility' });
+        return;
+      }
+      if (typeof showArchitectureToUsers !== 'boolean') {
+        res.status(400).json({ error: 'showArchitectureToUsers must be a boolean' });
+        return;
+      }
+    }
+
     const updateData: Record<string, unknown> = {};
     if (servoOpenDurationMs !== undefined) updateData.servoOpenDurationMs = servoOpenDurationMs;
     if (maxFeedsPerDay !== undefined) updateData.maxFeedsPerDay = maxFeedsPerDay;
+    if (showArchitectureToUsers !== undefined) updateData.showArchitectureToUsers = showArchitectureToUsers;
 
     if (Object.keys(updateData).length === 0) {
       res.status(400).json({ error: 'No valid settings fields provided' });
@@ -86,6 +101,7 @@ deviceRouter.post('/settings', async (req: Request, res: Response, next: NextFun
         status: 'OFFLINE',
         servoOpenDurationMs: servoOpenDurationMs ?? 1500,
         maxFeedsPerDay: maxFeedsPerDay ?? env.maxFeedsPerDay,
+        showArchitectureToUsers: showArchitectureToUsers ?? true,
       },
     });
 

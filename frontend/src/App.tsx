@@ -12,6 +12,7 @@ import HistoryPage from './pages/HistoryPage';
 import SchedulesPage from './pages/SchedulesPage';
 import SettingsPage from './pages/SettingsPage';
 import AdminPage from './pages/AdminPage';
+import ArchitecturePage from './pages/ArchitecturePage';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -53,6 +54,10 @@ export default function App() {
         <Route
           path="/settings"
           element={<PrivateRoute><Layout><SettingsPage /></Layout></PrivateRoute>}
+        />
+        <Route
+          path="/architecture"
+          element={<PrivateRoute><Layout><ArchitecturePage /></Layout></PrivateRoute>}
         />
         <Route
           path="/admin"

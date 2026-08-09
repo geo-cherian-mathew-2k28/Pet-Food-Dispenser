@@ -58,15 +58,16 @@ model Schedule {
 
 // ─── DeviceStatus ─────────────────────────────────────────────────────────────
 model DeviceStatus {
-  id                  String       @id @default(cuid())
-  status              DeviceState  @default(OFFLINE)
-  lastHeartbeatAt     DateTime?
-  uptimeSeconds       Int?
-  wifiStrength        Int?         // RSSI value
-  lastMessage         String?
-  servoOpenDurationMs Int          @default(1500)
-  maxFeedsPerDay      Int          @default(10)
-  updatedAt           DateTime     @updatedAt @default(now())
+  id                      String       @id @default(cuid())
+  status                  DeviceState  @default(OFFLINE)
+  lastHeartbeatAt         DateTime?
+  uptimeSeconds           Int?
+  wifiStrength            Int?         // RSSI value
+  lastMessage             String?
+  servoOpenDurationMs     Int          @default(1500)
+  maxFeedsPerDay          Int          @default(10)
+  showArchitectureToUsers Boolean      @default(true)
+  updatedAt               DateTime     @updatedAt @default(now())
 }
 
 // ─── Enums ────────────────────────────────────────────────────────────────────

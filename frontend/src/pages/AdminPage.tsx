@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
-import { Trash2, Shield, User, AlertCircle, RefreshCw, Mail, MessageSquare, Settings, CheckCircle2, Loader2, AlertTriangle, Bug, RotateCcw } from 'lucide-react';
+import { Trash2, Shield, User, AlertCircle, RefreshCw, Mail, MessageSquare, Settings, CheckCircle2, Loader2, AlertTriangle, Bug, RotateCcw, Cpu } from 'lucide-react';
 
 interface UserItem {
   id: string;
@@ -17,6 +17,7 @@ interface UserItem {
 interface DeviceSettings {
   maxFeedsPerDay: number;
   servoOpenDurationMs: number;
+  showArchitectureToUsers?: boolean;
 }
 
 export default function AdminPage() {
@@ -28,6 +29,8 @@ export default function AdminPage() {
   // Daily limit settings
   const [deviceSettings, setDeviceSettings] = useState<DeviceSettings | null>(null);
   const [maxFeedsPerDay, setMaxFeedsPerDay] = useState<number>(10);
+  const [showArchToUsers, setShowArchToUsers] = useState<boolean>(true);
+  const [savingArchSetting, setSavingArchSetting] = useState(false);
   const [savingLimit, setSavingLimit] = useState(false);
   const [limitMessage, setLimitMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -49,6 +52,7 @@ export default function AdminPage() {
         const dev = deviceRes.data.device;
         setDeviceSettings(dev);
         setMaxFeedsPerDay(dev.maxFeedsPerDay ?? 10);
+        setShowArchToUsers(dev.showArchitectureToUsers ?? true);
       }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to fetch admin data');
@@ -101,12 +105,35 @@ export default function AdminPage() {
     }
   };
 
+  const handleToggleShowArchitecture = async (newValue: boolean) => {
+    setSavingArchSetting(true);
+    setShowArchToUsers(newValue);
+    try {
+      const payload: Record<string, any> = {
+        showArchitectureToUsers: newValue,
+        maxFeedsPerDay,
+      };
+      if (deviceSettings?.servoOpenDurationMs) {
+        payload.servoOpenDurationMs = deviceSettings.servoOpenDurationMs;
+      }
+      const res = await api.post('/device/settings', payload);
+      if (res.data.device) {
+        setDeviceSettings(res.data.device);
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to update setting');
+      setShowArchToUsers(!newValue);
+    } finally {
+      setSavingArchSetting(false);
+    }
+  };
+
   const handleSaveDailyLimit = async () => {
     setSavingLimit(true);
     setLimitMessage(null);
     try {
       // Always send both fields so validation passes on all backend versions
-      const payload: Record<string, number> = { maxFeedsPerDay };
+      const payload: Record<string, any> = { maxFeedsPerDay, showArchitectureToUsers: showArchToUsers };
       if (deviceSettings?.servoOpenDurationMs) {
         payload.servoOpenDurationMs = deviceSettings.servoOpenDurationMs;
       }
@@ -145,6 +172,48 @@ export default function AdminPage() {
           <span>{error}</span>
         </div>
       )}
+
+      {/* ── Architecture Access Setting ────────────────────────────────────── */}
+      <div className="card p-6 border-l-4 border-l-cat-500">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 bg-cat-50 text-cat-600 rounded-xl shrink-0 mt-0.5">
+              <Cpu className="w-6 h-6" />
+            </div>
+            <div>
+              <h2 className="font-bold text-gray-900 text-base">Show Architecture to Users</h2>
+              <p className="text-xs text-gray-500 mt-1 max-w-xl">
+                When turned <strong className="text-gray-700">ON</strong>, non-admin users can view the interactive <strong>System Architecture</strong> section in their sidebar navigation. When turned <strong className="text-gray-700">OFF</strong>, it is hidden from regular users (admins always retain full access).
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 self-end sm:self-center bg-gray-50 p-1.5 rounded-2xl border border-gray-100">
+            <button
+              onClick={() => handleToggleShowArchitecture(true)}
+              disabled={savingArchSetting}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                showArchToUsers
+                  ? 'bg-cat-500 text-white shadow-sm'
+                  : 'text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              ON
+            </button>
+            <button
+              onClick={() => handleToggleShowArchitecture(false)}
+              disabled={savingArchSetting}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                !showArchToUsers
+                  ? 'bg-gray-800 text-white shadow-sm'
+                  : 'text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              OFF
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* ── Daily Feed Limit Control ────────────────────────────────────────── */}
       <div className="card p-6">

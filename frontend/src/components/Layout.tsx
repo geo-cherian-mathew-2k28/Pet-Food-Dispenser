@@ -1,15 +1,31 @@
 // SmartCat Feeder - Layout Component
 // Sidebar navigation + top header wrapper for authenticated pages.
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Home, ClipboardList, Clock, Settings, Shield, LogOut, Menu, X, Cat } from 'lucide-react';
+import { Home, ClipboardList, Clock, Settings, Shield, LogOut, Menu, X, Cat, Cpu } from 'lucide-react';
+import api from '../lib/api';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showArch, setShowArch] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    api.get('/device/status')
+      .then((res) => {
+        if (isMounted && res.data.device) {
+          setShowArch(res.data.device.showArchitectureToUsers ?? true);
+        }
+      })
+      .catch(() => {
+        // Fallback default to true on error
+      });
+    return () => { isMounted = false; };
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -21,6 +37,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { to: '/history',   icon: ClipboardList, label: 'History' },
     { to: '/schedules', icon: Clock, label: 'Schedules' },
     { to: '/settings',  icon: Settings, label: 'Settings' },
+    ...(user?.role === 'ADMIN' || showArch ? [{ to: '/architecture', icon: Cpu, label: 'Architecture' }] : []),
     ...(user?.role === 'ADMIN' ? [{ to: '/admin', icon: Shield, label: 'Admin Panel' }] : []),
   ];
 
