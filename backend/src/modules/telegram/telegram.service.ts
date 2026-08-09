@@ -6,6 +6,7 @@ import { env } from '../../config/env';
 import { triggerFeed } from '../feeds/feed.service';
 import { prisma } from '../../config/prisma';
 import { logger } from '../../utils/logger';
+import { getDeviceStatusRecord, updateDeviceStatusRecord } from '../device/device.service';
 
 let bot: Telegraf | null = null;
 
@@ -77,7 +78,7 @@ async function doFeed(ctx: Context): Promise<void> {
 async function doStatus(ctx: Context): Promise<void> {
   const keyboard = getKeyboard(ctx);
   try {
-    const device = await prisma.deviceStatus.findUnique({ where: { id: 'device-1' } });
+    const device = await getDeviceStatusRecord();
 
     if (!device) {
       await ctx.reply('Device status: OFFLINE\n\nNo heartbeat received yet. Is the Arduino powered on?', keyboard);
@@ -147,7 +148,7 @@ async function doToday(ctx: Context): Promise<void> {
     const count = await prisma.feedLog.count({
       where: { createdAt: { gte: todayStart }, status: 'SUCCESS' },
     });
-    const device = await prisma.deviceStatus.findUnique({ where: { id: 'device-1' } });
+    const device = await getDeviceStatusRecord();
     const maxFeeds = device?.maxFeedsPerDay ?? env.maxFeedsPerDay;
     await ctx.reply(`Today's successful feeds: ${count} / ${maxFeeds}`, keyboard);
   } catch (_err) {
@@ -373,11 +374,7 @@ export function startTelegramBot(): void {
       return;
     }
     try {
-      await prisma.deviceStatus.upsert({
-        where: { id: 'device-1' },
-        update: { maxFeedsPerDay: limitVal },
-        create: { id: 'device-1', status: 'OFFLINE', maxFeedsPerDay: limitVal },
-      });
+      await updateDeviceStatusRecord({ maxFeedsPerDay: limitVal });
       await ctx.reply(`Daily feed limit has been updated to ${limitVal} feeds per day.`);
     } catch (err) {
       logger.error('Failed to update maxFeedsPerDay:', err);

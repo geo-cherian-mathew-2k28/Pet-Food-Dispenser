@@ -13,6 +13,8 @@ import { isLockStale, clearLockTimestamp } from '../../utils/dispensingLock';
 import { generateRequestId } from '../../utils/requestId';
 import { logger } from '../../utils/logger';
 
+import { getDeviceStatusRecord } from '../device/device.service';
+
 export type FeedSource = 'WEB' | 'TELEGRAM' | 'SCHEDULE';
 
 export interface FeedRequest {
@@ -79,7 +81,7 @@ export async function triggerFeed(req: FeedRequest): Promise<FeedResult> {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
-  const device = await prisma.deviceStatus.findUnique({ where: { id: 'device-1' } });
+  const device = await getDeviceStatusRecord();
   const maxFeeds = device?.maxFeedsPerDay ?? env.maxFeedsPerDay;
 
   const todayFeedCount = await prisma.feedLog.count({

@@ -6,6 +6,7 @@ import { env } from '../../config/env';
 import { logger } from '../../utils/logger';
 import { prisma } from '../../config/prisma';
 import { recordLockAcquired, clearLockTimestamp } from '../../utils/dispensingLock';
+import { getDeviceStatusRecord, updateDeviceStatusRecord } from '../device/device.service';
 
 // ─── MQTT Topic Constants ─────────────────────────────────────────────────────
 export const TOPICS = {
@@ -154,25 +155,13 @@ async function handleHeartbeat(data: {
   createdAt: string;
 }): Promise<void> {
   try {
-    // Upsert the single device status record (we use a fixed id "device-1")
-    await prisma.deviceStatus.upsert({
-      where: { id: 'device-1' },
-      update: {
-        status: 'ONLINE',
-        lastHeartbeatAt: new Date(),
-        uptimeSeconds: data.uptimeSeconds,
-        wifiStrength: data.wifiStrength,
-        lastMessage: `Heartbeat at ${new Date().toISOString()}`,
-        updatedAt: new Date(),
-      },
-      create: {
-        id: 'device-1',
-        status: 'ONLINE',
-        lastHeartbeatAt: new Date(),
-        uptimeSeconds: data.uptimeSeconds,
-        wifiStrength: data.wifiStrength,
-        lastMessage: `First heartbeat`,
-      },
+    await updateDeviceStatusRecord({
+      status: 'ONLINE',
+      lastHeartbeatAt: new Date(),
+      uptimeSeconds: data.uptimeSeconds,
+      wifiStrength: data.wifiStrength,
+      lastMessage: `Heartbeat at ${new Date().toISOString()}`,
+      updatedAt: new Date(),
     });
     logger.debug(`Heartbeat received: uptime ${data.uptimeSeconds}s, WiFi ${data.wifiStrength}dBm`);
   } catch (err) {
@@ -245,9 +234,7 @@ export async function publishFeedCommand(payload: {
   // Fetch configured servo open duration from DB
   let durationMs = 1500;
   try {
-    const device = await prisma.deviceStatus.findUnique({
-      where: { id: 'device-1' },
-    });
+    const device = await getDeviceStatusRecord();
     if (device && device.servoOpenDurationMs) {
       durationMs = device.servoOpenDurationMs;
     }
@@ -290,9 +277,7 @@ export async function publishFeedCommandAndWait(
   },
   timeoutMs = 15000
 ): Promise<DeviceResponse> {
-  const device = await prisma.deviceStatus.findUnique({
-    where: { id: 'device-1' },
-  });
+  const device = await getDeviceStatusRecord();
   const customTimeoutMs = device?.servoOpenDurationMs ? (device.servoOpenDurationMs * payload.portion + 5000) : timeoutMs;
 
   return new Promise(async (resolve, reject) => {
@@ -354,7 +339,7 @@ export function releaseDispensingLock(): void {
  */
 export async function checkDeviceHeartbeatTimeout(): Promise<void> {
   try {
-    const device = await prisma.deviceStatus.findUnique({ where: { id: 'device-1' } });
+    const device = await getDeviceStatusRecord();
 
     if (!device) return;
 
@@ -362,10 +347,7 @@ export async function checkDeviceHeartbeatTimeout(): Promise<void> {
       const elapsedMs = Date.now() - device.lastHeartbeatAt.getTime();
       if (elapsedMs > 120_000) {
         // 120 seconds without heartbeat = truly offline
-        await prisma.deviceStatus.update({
-          where: { id: 'device-1' },
-          data: { status: 'OFFLINE', lastMessage: 'Heartbeat timeout (>120s)' },
-        });
+        await updateDeviceStatusRecord({ status: 'OFFLINE', lastMessage: 'Heartbeat timeout (>120s)' });
         logger.warn('Device marked OFFLINE due to heartbeat timeout (>120s)');
 
         // Also release any stuck dispensing lock if device went offline mid-feed

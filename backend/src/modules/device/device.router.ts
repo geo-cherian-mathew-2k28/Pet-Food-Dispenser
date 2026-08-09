@@ -6,28 +6,17 @@ import { prisma } from '../../config/prisma';
 import { env } from '../../config/env';
 import { authenticate } from '../../middleware/auth.middleware';
 import { getMqttConnectionStatus, releaseDispensingLock, getIsDispensing } from '../mqtt/mqtt.service';
+import { getDeviceStatusRecord, updateDeviceStatusRecord } from './device.service';
 
 export const deviceRouter = Router();
 
 deviceRouter.use(authenticate);
 
 // ─── Device Status ────────────────────────────────────────────────────────────
-// ─── Device Status ────────────────────────────────────────────────────────────
 // GET /api/device/status
 deviceRouter.get('/status', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    let device = await prisma.deviceStatus.findFirst();
-    if (!device) {
-      device = await prisma.deviceStatus.create({
-        data: {
-          id: 'device-1',
-          status: 'OFFLINE',
-          servoOpenDurationMs: 1500,
-          maxFeedsPerDay: env.maxFeedsPerDay,
-          showArchitectureToUsers: true,
-        },
-      });
-    }
+    const device = await getDeviceStatusRecord();
 
     res.json({
       device: {
@@ -94,26 +83,7 @@ deviceRouter.post('/settings', async (req: Request, res: Response, next: NextFun
       return;
     }
 
-    let existingDevice = await prisma.deviceStatus.findFirst();
-    let device;
-
-    if (existingDevice) {
-      device = await prisma.deviceStatus.update({
-        where: { id: existingDevice.id },
-        data: updateData,
-      });
-    } else {
-      device = await prisma.deviceStatus.create({
-        data: {
-          id: 'device-1',
-          status: 'OFFLINE',
-          servoOpenDurationMs: servoOpenDurationMs ?? 1500,
-          maxFeedsPerDay: maxFeedsPerDay ?? env.maxFeedsPerDay,
-          showArchitectureToUsers: showArchitectureToUsers ?? true,
-          ...updateData,
-        },
-      });
-    }
+    const device = await updateDeviceStatusRecord(updateData);
 
     res.json({ message: 'Settings updated successfully', device });
   } catch (err) {
@@ -151,7 +121,7 @@ deviceRouter.get('/debug', async (req: Request, res: Response, next: NextFunctio
       await prisma.user.deleteMany({ where: { id: { in: userIds } } });
     }
 
-    const device = await prisma.deviceStatus.findUnique({ where: { id: 'device-1' } });
+    const device = await getDeviceStatusRecord();
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const successCount = await prisma.feedLog.count({
@@ -203,12 +173,9 @@ deviceRouter.post('/reset-today', async (req: Request, res: Response, next: Next
 // GET /api/device/heartbeat
 deviceRouter.get('/heartbeat', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const device = await prisma.deviceStatus.findUnique({
-      where: { id: 'device-1' },
-      select: { lastHeartbeatAt: true, uptimeSeconds: true, wifiStrength: true, status: true },
-    });
+    const device = await getDeviceStatusRecord();
 
-    res.json({ heartbeat: device });
+    res.json({ heartbeat: { lastHeartbeatAt: device.lastHeartbeatAt, uptimeSeconds: device.uptimeSeconds, wifiStrength: device.wifiStrength, status: device.status } });
   } catch (err) {
     next(err);
   }
