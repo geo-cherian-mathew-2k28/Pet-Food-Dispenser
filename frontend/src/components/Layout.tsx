@@ -11,19 +11,22 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [showArch, setShowArch] = useState(true);
+  const [showArch, setShowArch] = useState<boolean>(() => {
+    const saved = localStorage.getItem('smartcat_show_arch');
+    return saved !== null ? saved === 'true' : true;
+  });
 
   useEffect(() => {
     let isMounted = true;
     api.get('/device/status')
       .then((res) => {
-        if (isMounted && res.data.device) {
-          setShowArch(res.data.device.showArchitectureToUsers ?? true);
+        if (isMounted && res.data.device && typeof res.data.device.showArchitectureToUsers === 'boolean') {
+          const val = res.data.device.showArchitectureToUsers;
+          setShowArch(val);
+          localStorage.setItem('smartcat_show_arch', String(val));
         }
       })
-      .catch(() => {
-        // Fallback default to true on error
-      });
+      .catch(() => {});
     return () => { isMounted = false; };
   }, []);
 

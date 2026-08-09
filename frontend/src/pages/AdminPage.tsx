@@ -29,7 +29,10 @@ export default function AdminPage() {
   // Daily limit settings
   const [deviceSettings, setDeviceSettings] = useState<DeviceSettings | null>(null);
   const [maxFeedsPerDay, setMaxFeedsPerDay] = useState<number>(10);
-  const [showArchToUsers, setShowArchToUsers] = useState<boolean>(true);
+  const [showArchToUsers, setShowArchToUsers] = useState<boolean>(() => {
+    const saved = localStorage.getItem('smartcat_show_arch');
+    return saved !== null ? saved === 'true' : true;
+  });
   const [savingArchSetting, setSavingArchSetting] = useState(false);
   const [savingLimit, setSavingLimit] = useState(false);
   const [limitMessage, setLimitMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -52,7 +55,10 @@ export default function AdminPage() {
         const dev = deviceRes.data.device;
         setDeviceSettings(dev);
         setMaxFeedsPerDay(dev.maxFeedsPerDay ?? 10);
-        setShowArchToUsers(dev.showArchitectureToUsers ?? true);
+        if (typeof dev.showArchitectureToUsers === 'boolean') {
+          setShowArchToUsers(dev.showArchitectureToUsers);
+          localStorage.setItem('smartcat_show_arch', String(dev.showArchitectureToUsers));
+        }
       }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to fetch admin data');
@@ -108,6 +114,7 @@ export default function AdminPage() {
   const handleToggleShowArchitecture = async (newValue: boolean) => {
     setSavingArchSetting(true);
     setShowArchToUsers(newValue);
+    localStorage.setItem('smartcat_show_arch', String(newValue));
     try {
       const payload: Record<string, any> = {
         showArchitectureToUsers: newValue,
@@ -119,10 +126,16 @@ export default function AdminPage() {
       const res = await api.post('/device/settings', payload);
       if (res.data.device) {
         setDeviceSettings(res.data.device);
+        if (typeof res.data.device.showArchitectureToUsers === 'boolean') {
+          setShowArchToUsers(res.data.device.showArchitectureToUsers);
+          localStorage.setItem('smartcat_show_arch', String(res.data.device.showArchitectureToUsers));
+        }
       }
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to update setting');
-      setShowArchToUsers(!newValue);
+      const fallback = !newValue;
+      setShowArchToUsers(fallback);
+      localStorage.setItem('smartcat_show_arch', String(fallback));
     } finally {
       setSavingArchSetting(false);
     }
