@@ -46,3 +46,10 @@ Thumbs.db
 .tempmediaStorage/
 tmp/
 temp/
+
+# Arduino Local Secrets & Private Configs (SENSITIVE)
+*secrets.h
+*secrets.ino
+arduino/secrets/
+arduino/local_config/
+
