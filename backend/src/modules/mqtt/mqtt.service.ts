@@ -90,23 +90,52 @@ export function connectMqtt(): void {
 
 // ─── Message Handler ─────────────────────────────────────────────────────────
 async function handleMessage(topic: string, payloadBuffer: Buffer): Promise<void> {
+  // Security Guard: Limit payload size to 2KB to prevent memory exhaustion / DoS
+  if (payloadBuffer.length > 2048) {
+    logger.warn(`MQTT Security Alert: Dropped oversized payload (${payloadBuffer.length} bytes) on topic ${topic}`);
+    return;
+  }
+
   const payload = payloadBuffer.toString();
 
   try {
     const data = JSON.parse(payload);
+    if (!data || typeof data !== 'object') return;
+
     logger.debug(`MQTT received [${topic}]: ${payload}`);
 
     switch (topic) {
       case TOPICS.HEARTBEAT:
-        await handleHeartbeat(data);
+        // Validate types for heartbeat payload
+        if (typeof data.uptimeSeconds === 'number' && typeof data.wifiStrength === 'number') {
+          await handleHeartbeat({
+            status: String(data.status || 'online').substring(0, 20),
+            uptimeSeconds: Math.max(0, Math.min(data.uptimeSeconds, 315360000)), // max 10 years
+            wifiStrength: Math.max(-120, Math.min(data.wifiStrength, 0)),
+            createdAt: String(data.createdAt || '').substring(0, 50),
+          });
+        }
         break;
 
       case TOPICS.RESPONSE:
-        await handleDeviceResponse(data as DeviceResponse);
+        // Security Guard: Validate requestId format (alphanumeric and dashes only)
+        if (data.requestId && typeof data.requestId === 'string' && /^[a-zA-Z0-9\-_]{1,64}$/.test(data.requestId)) {
+          const validatedResponse: DeviceResponse = {
+            requestId: data.requestId,
+            status: data.status === 'success' ? 'success' : 'failed',
+            message: String(data.message || '').substring(0, 255),
+            servoAngle: typeof data.servoAngle === 'number' ? data.servoAngle : undefined,
+            durationMs: typeof data.durationMs === 'number' ? data.durationMs : undefined,
+            createdAt: String(data.createdAt || '').substring(0, 50),
+          };
+          await handleDeviceResponse(validatedResponse);
+        } else {
+          logger.warn(`MQTT Security Alert: Dropped response with invalid or missing requestId format`);
+        }
         break;
 
       case TOPICS.ERROR:
-        logger.error(`Device error: ${data.message || payload}`);
+        logger.error(`Device error: ${String(data.message || data.error || payload).substring(0, 255)}`);
         break;
 
       default:
