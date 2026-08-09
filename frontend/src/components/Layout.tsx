@@ -37,7 +37,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { to: '/history',   icon: ClipboardList, label: 'History' },
     { to: '/schedules', icon: Clock, label: 'Schedules' },
     { to: '/settings',  icon: Settings, label: 'Settings' },
-    ...(user?.role === 'ADMIN' || showArch ? [{ to: '/architecture', icon: Cpu, label: 'Architecture' }] : []),
+    ...(showArch ? [{ to: '/architecture', icon: Cpu, label: 'Architecture' }] : []),
     ...(user?.role === 'ADMIN' ? [{ to: '/admin', icon: Shield, label: 'Admin Panel' }] : []),
   ];
 

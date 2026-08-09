@@ -6,32 +6,56 @@ import { prisma } from '../../config/prisma';
 import { env } from '../../config/env';
 
 export async function getDeviceStatusRecord() {
-  const devices = await prisma.deviceStatus.findMany({
-    orderBy: { updatedAt: 'desc' },
+  // 1. Try to find existing device-1 record
+  let device = await prisma.deviceStatus.findUnique({
+    where: { id: 'device-1' },
   });
 
-  if (devices.length === 0) {
-    return prisma.deviceStatus.create({
+  if (device) {
+    // Delete any orphan/duplicate rows that are not device-1
+    await prisma.deviceStatus.deleteMany({
+      where: { id: { not: 'device-1' } },
+    }).catch(() => {});
+    return device;
+  }
+
+  // 2. If device-1 doesn't exist yet, check if there are legacy rows with CUIDs
+  const firstDevice = await prisma.deviceStatus.findFirst({
+    orderBy: { updatedAt: 'asc' },
+  });
+
+  if (firstDevice) {
+    // Migrate settings from legacy row to device-1
+    device = await prisma.deviceStatus.create({
       data: {
         id: 'device-1',
-        status: 'OFFLINE',
-        servoOpenDurationMs: 1500,
-        maxFeedsPerDay: env.maxFeedsPerDay,
-        showArchitectureToUsers: true,
+        status: firstDevice.status,
+        servoOpenDurationMs: firstDevice.servoOpenDurationMs,
+        maxFeedsPerDay: firstDevice.maxFeedsPerDay,
+        showArchitectureToUsers: firstDevice.showArchitectureToUsers,
+        wifiStrength: firstDevice.wifiStrength,
+        uptimeSeconds: firstDevice.uptimeSeconds,
+        lastHeartbeatAt: firstDevice.lastHeartbeatAt,
       },
     });
-  }
 
-  // Clean up any legacy duplicate rows created by old hardcoded upsert queries
-  if (devices.length > 1) {
-    const [keepDevice, ...duplicateDevices] = devices;
     await prisma.deviceStatus.deleteMany({
-      where: { id: { in: duplicateDevices.map(d => d.id) } },
-    });
-    return keepDevice;
+      where: { id: { not: 'device-1' } },
+    }).catch(() => {});
+
+    return device;
   }
 
-  return devices[0];
+  // 3. Create initial device-1 record if table is completely empty
+  return prisma.deviceStatus.create({
+    data: {
+      id: 'device-1',
+      status: 'OFFLINE',
+      servoOpenDurationMs: 1500,
+      maxFeedsPerDay: env.maxFeedsPerDay,
+      showArchitectureToUsers: true,
+    },
+  });
 }
 
 export async function updateDeviceStatusRecord(updateData: Record<string, any>) {
@@ -41,3 +65,4 @@ export async function updateDeviceStatusRecord(updateData: Record<string, any>) 
     data: updateData,
   });
 }
+
