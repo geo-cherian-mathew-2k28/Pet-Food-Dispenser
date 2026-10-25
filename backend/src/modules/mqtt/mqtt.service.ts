@@ -40,17 +40,22 @@ export interface DeviceResponse {
 
 // ─── Connect ─────────────────────────────────────────────────────────────────
 export function connectMqtt(): void {
-  logger.info(`Connecting to MQTT broker: ${env.mqtt.host}:${env.mqtt.port}`);
+  // If host is broker.hivemq.com (public broker), force port 1883 and tcp protocol
+  const isHiveMqPublic = env.mqtt.host === 'broker.hivemq.com';
+  const port = isHiveMqPublic ? 1883 : env.mqtt.port;
+  const protocol = port === 8883 ? 'mqtts' : 'mqtt';
+
+  logger.info(`Connecting to MQTT broker: ${env.mqtt.host}:${port} (${protocol})`);
 
   client = mqtt.connect({
     host: env.mqtt.host,
-    port: env.mqtt.port,
-    protocol: env.mqtt.port === 8883 ? 'mqtts' : 'mqtt',
-    ...(env.mqtt.username ? { username: env.mqtt.username, password: env.mqtt.password } : {}),
+    port,
+    protocol,
+    ...(isHiveMqPublic ? {} : (env.mqtt.username ? { username: env.mqtt.username, password: env.mqtt.password } : {})),
     clientId: `${env.mqtt.clientId}-${Math.random().toString(36).substring(2, 8)}`,
-    reconnectPeriod: 3000,    // faster reconnect
-    connectTimeout: 8000,     // faster timeout
-    keepalive: 20,            // 20s keepalive to detect stale connections faster
+    reconnectPeriod: 2000,    // faster reconnect (2s)
+    connectTimeout: 5000,     // faster timeout (5s)
+    keepalive: 15,            // 15s keepalive to detect stale connections faster
     clean: true,
   });
 
@@ -138,7 +143,18 @@ async function handleMessage(topic: string, payloadBuffer: Buffer): Promise<void
 
       case TOPICS.ACK:
         if (data.requestId) {
-          logger.info(`⚡ Feeder Device ACK received for [${data.requestId}]: ${data.message || 'Processing command'}`);
+          logger.info(`⚡ Feeder Device ACK received in real-time for [${data.requestId}]: ${data.message || 'Dispensing food'}`);
+          // Instantly resolve pending awaiter so the user gets sub-second confirmation!
+          const resolver = pendingResponses.get(data.requestId);
+          if (resolver) {
+            resolver({
+              requestId: data.requestId,
+              status: 'success',
+              message: data.message || 'Food is dispensing now!',
+              createdAt: new Date().toISOString(),
+            });
+            pendingResponses.delete(data.requestId);
+          }
         }
         break;
 
@@ -273,10 +289,10 @@ export async function publishFeedCommand(payload: {
 }
 
 /**
- * Publish feed command and wait for device response with timeout.
- * - Confirms broker PUBACK delivery first
- * - Uses responsive timeout (4.5s for standard feed instead of hanging 20s)
- * - Always guarantees dispensing lock release
+ * Publish feed command and wait for device response or real-time ACK.
+ * - Sub-second resolution when Arduino transmits TOPICS.ACK
+ * - Fails fast in 4 seconds if device is offline (never hangs for 20 seconds)
+ * - Releases dispensing lock immediately
  */
 export async function publishFeedCommandAndWait(
   payload: {
@@ -286,12 +302,9 @@ export async function publishFeedCommandAndWait(
     userName: string;
     portion: number;
   },
-  timeoutMs = 6000
+  timeoutMs = 4000
 ): Promise<DeviceResponse> {
-  const device = await getDeviceStatusRecord();
-  const duration = device?.servoOpenDurationMs ?? 1500;
-  // Responsive timeout: servo duration * portions + 3000ms network buffer (e.g. ~4.5s total)
-  const customTimeoutMs = Math.min(12000, Math.max(4500, duration * payload.portion + 3000));
+  const customTimeoutMs = 4000; // Strict 4-second maximum timeout
 
   return new Promise(async (resolve, reject) => {
     const published = await publishFeedCommand(payload);
@@ -302,18 +315,12 @@ export async function publishFeedCommandAndWait(
       return;
     }
 
-    // Set timeout if device doesn't respond in time
+    // Set 4s timeout if device doesn't respond in time
     const timer = setTimeout(() => {
       pendingResponses.delete(payload.requestId);
       releaseDispensingLock();
-      logger.warn(`Dispensing lock auto-released after timeout for [${payload.requestId}]`);
-      // If broker confirmed PUBACK, device may still be dispensing food physically
-      resolve({
-        requestId: payload.requestId,
-        status: 'success',
-        message: 'Feed command delivered to broker & dispatched to feeder',
-        createdAt: new Date().toISOString(),
-      });
+      logger.warn(`Device response timeout after 4s for [${payload.requestId}]`);
+      reject(new Error('Feeder did not acknowledge in 4s. Please verify Arduino is powered and online.'));
     }, customTimeoutMs);
 
     pendingResponses.set(payload.requestId, (result) => {

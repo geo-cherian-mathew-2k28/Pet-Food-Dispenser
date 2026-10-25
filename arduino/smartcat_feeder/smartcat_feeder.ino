@@ -574,7 +574,7 @@ void dispenseFood(const String& requestId, int portion, int durationMs) {
   if (!feederServo.attached()) {
     Serial.print(F("[SERVO] Attaching on pin ")); Serial.println(SERVO_PIN);
     feederServo.attach(SERVO_PIN, 544, 2400);
-    delay(200);
+    delay(40);
   }
 
   Serial.print(F("[SERVO] Opening to ")); Serial.print(OPEN_ANGLE); Serial.println(F("°"));

@@ -33,7 +33,7 @@ export const env = {
   // MQTT
   mqtt: {
     host: required('MQTT_BROKER_HOST'),
-    port: parseInt(optional('MQTT_BROKER_PORT', '8883'), 10),
+    port: parseInt(optional('MQTT_BROKER_PORT', '1883'), 10),
     username: optional('MQTT_USERNAME', ''),
     password: optional('MQTT_PASSWORD', ''),
     clientId: optional('MQTT_CLIENT_ID', 'smartcat-backend'),

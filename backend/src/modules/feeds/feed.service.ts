@@ -114,8 +114,8 @@ export async function triggerFeed(req: FeedRequest): Promise<FeedResult> {
     };
   }
 
-  // ── 4. Create PENDING feed log ─────────────────────────────────────────────
-  const feedLog = await prisma.feedLog.create({
+  // ── 4. Create PENDING feed log asynchronously (non-blocking for sub-second speed)
+  const feedLogPromise = prisma.feedLog.create({
     data: {
       source,
       status: 'PENDING',
@@ -125,9 +125,12 @@ export async function triggerFeed(req: FeedRequest): Promise<FeedResult> {
       requestId,
       message: 'Feed command sent to device',
     },
+  }).catch((err) => {
+    logger.warn(`FeedLog insert notice: ${err}`);
+    return null;
   });
 
-  // ── 5. Publish MQTT command and wait for response ──────────────────────────
+  // ── 5. Publish MQTT command and wait for real-time ACK ────────────────────
   try {
     const response = await publishFeedCommandAndWait({
       requestId,
@@ -143,27 +146,38 @@ export async function triggerFeed(req: FeedRequest): Promise<FeedResult> {
       recordFeedCompleted(new Date());
     }
 
+    // Update log in background
+    feedLogPromise.then((feedLog) => {
+      if (feedLog) {
+        prisma.feedLog.update({
+          where: { id: feedLog.id },
+          data: { status: 'SUCCESS', message: response.message, completedAt: new Date() },
+        }).catch(() => {});
+      }
+    });
+
     return {
       success: response.status === 'success',
       message: response.message,
       requestId,
-      feedLogId: feedLog.id,
     };
   } catch (err) {
     releaseDispensingLock();
-    // Timeout or publish error — mark log as FAILED
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
 
-    await prisma.feedLog.update({
-      where: { id: feedLog.id },
-      data: { status: 'FAILED', message: errorMessage, completedAt: new Date() },
+    feedLogPromise.then((feedLog) => {
+      if (feedLog) {
+        prisma.feedLog.update({
+          where: { id: feedLog.id },
+          data: { status: 'FAILED', message: errorMessage, completedAt: new Date() },
+        }).catch(() => {});
+      }
     });
 
     return {
       success: false,
       message: errorMessage,
       requestId,
-      feedLogId: feedLog.id,
     };
   }
 }

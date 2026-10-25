@@ -178,7 +178,7 @@ export default function DashboardPage() {
       const res = await api.post('/feeds/now', { portion: 1 });
       setFeedResult({ success: res.data.success, message: res.data.message });
       setIsServerDispensing(false);
-      await pollStatus();
+      setFeeding(false);
     } catch (err: unknown) {
       const message =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
@@ -187,7 +187,9 @@ export default function DashboardPage() {
     } finally {
       setFeeding(false);
       setIsServerDispensing(false);
-      await fetchData();
+      // Refresh status and stats in background without holding UI state
+      pollStatus().catch(() => {});
+      fetchData().catch(() => {});
     }
   };
 
