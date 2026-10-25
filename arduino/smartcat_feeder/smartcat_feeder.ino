@@ -447,11 +447,22 @@ void connectWiFi() {
     showFrame(FRAME_WIFI_OK);
     delay(1000);
 
+    Serial.print(F("[WiFi] ESP32-S3 Firmware Version: "));
+    Serial.println(WiFi.firmwareVersion());
+
     #if USE_TLS
+      Serial.print(F("[NTP] Syncing network time... "));
       unsigned long t0 = millis();
-      while (WiFi.getTime() < 1700000000UL && millis() - t0 < 2000) {
-        delay(250);
+      unsigned long epoch = 0;
+      while (millis() - t0 < 8000) {
+        epoch = WiFi.getTime();
+        if (epoch > 1700000000UL) break;
+        delay(500);
+        Serial.print('.');
       }
+      Serial.println();
+      Serial.print(F("[NTP] Epoch time: "));
+      Serial.println(epoch);
     #endif
 
     connectMQTT();
@@ -476,9 +487,14 @@ void connectMQTT() {
   snprintf(currentClientId, sizeof(currentClientId), "smartcat-uno-%ld", randVal);
   Serial.print(F("[MQTT] Client ID: ")); Serial.println(currentClientId);
 
+  #if USE_TLS
+    modem.debug(Serial);
+  #endif
+
   bool connected = false;
   #if USE_TLS
     connected = mqttClient.connect(currentClientId, MQTT_USERNAME, MQTT_PASSWORD);
+    modem.noDebug();
   #else
     connected = mqttClient.connect(currentClientId);
   #endif
