@@ -8,11 +8,28 @@ import { connectMqtt } from './modules/mqtt/mqtt.service';
 import { startScheduler } from './modules/schedules/schedule.service';
 import { startTelegramBot } from './modules/telegram/telegram.service';
 import { logger } from './utils/logger';
+import { prisma } from './config/prisma';
+
+async function runMigrations(): Promise<void> {
+  try {
+    // Auto-create the DeviceStatus.showArchitectureToUsers column if missing
+    await prisma.$executeRaw`
+      ALTER TABLE "DeviceStatus" 
+      ADD COLUMN IF NOT EXISTS "showArchitectureToUsers" BOOLEAN NOT NULL DEFAULT true
+    `;
+    logger.info('✅ DB migration: showArchitectureToUsers column ensured');
+  } catch (err: any) {
+    // Column may already exist in some deployment environments — safe to ignore
+    logger.warn(`DB migration notice: ${err?.message || err}`);
+  }
+}
 
 async function main(): Promise<void> {
-  // Prioritize IPv4 resolution to prevent DNS-related delays or timeouts when contacting external APIs like Telegram on certain ISPs.
   dns.setDefaultResultOrder('ipv4first');
   logger.info('🐱 SmartCat Feeder Backend starting...');
+
+  // Run DB migrations on startup (idempotent)
+  await runMigrations();
 
   // Connect to MQTT broker
   connectMqtt();
