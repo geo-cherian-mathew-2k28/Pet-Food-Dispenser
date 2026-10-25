@@ -706,9 +706,12 @@ void dispenseFood(const String& requestId, int portion, int durationMs) {
 
   isDispensing = false;
 
-  // Show MQTT connected state again
+  // 1. Publish response IMMEDIATELY so backend resolves without waiting for animations
+  publishResponse(requestId, true, "Food dispensed", elapsed);
+
+  // 2. Show brief MQTT status frame
   showFrame(FRAME_MQTT_OK);
-  delay(600);
+  delay(300);
   showFrame(FRAME_IDLE);
 
   // Reconnect MQTT if it dropped during dispense
@@ -716,8 +719,6 @@ void dispenseFood(const String& requestId, int portion, int durationMs) {
     mqttConnected = false;
     connectMQTT();
   }
-
-  publishResponse(requestId, true, "Food dispensed", elapsed);
 }
 
 // =============================================================================

@@ -181,7 +181,13 @@ export default function AdminPage() {
     setSavingCooldown(true);
     setCooldownMessage(null);
     try {
-      const res = await api.post('/device/settings', { feedCooldownSeconds: targetVal });
+      const payload: Record<string, any> = {
+        feedCooldownSeconds: targetVal,
+        maxFeedsPerDay,
+        showArchitectureToUsers: showArchToUsers,
+        servoOpenDurationMs: servoDurationMs,
+      };
+      const res = await api.post('/device/settings', payload);
       setCooldownSeconds(targetVal);
       if (res.data.device) {
         setDeviceSettings(res.data.device);
@@ -204,7 +210,13 @@ export default function AdminPage() {
     setSavingServoDuration(true);
     setServoDurationMessage(null);
     try {
-      const res = await api.post('/device/settings', { servoOpenDurationMs: targetVal });
+      const payload: Record<string, any> = {
+        servoOpenDurationMs: targetVal,
+        maxFeedsPerDay,
+        showArchitectureToUsers: showArchToUsers,
+        feedCooldownSeconds: cooldownSeconds,
+      };
+      const res = await api.post('/device/settings', payload);
       setServoDurationMs(targetVal);
       if (res.data.device) {
         setDeviceSettings(res.data.device);

@@ -275,10 +275,12 @@ export async function publishFeedCommandAndWait(
     userName: string;
     portion: number;
   },
-  timeoutMs = 15000
+  timeoutMs = 20000
 ): Promise<DeviceResponse> {
   const device = await getDeviceStatusRecord();
-  const customTimeoutMs = device?.servoOpenDurationMs ? (device.servoOpenDurationMs * payload.portion + 5000) : timeoutMs;
+  // Allow plenty of buffer for physical servo movement + network transit (minimum 18s)
+  const duration = device?.servoOpenDurationMs ?? 1500;
+  const customTimeoutMs = Math.max(18000, duration * payload.portion + 12000);
 
   return new Promise(async (resolve, reject) => {
     const published = await publishFeedCommand(payload);

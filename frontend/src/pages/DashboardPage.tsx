@@ -9,8 +9,7 @@ import api from '../lib/api';
 import type { DeviceStatus, FeedLog, FeedStats } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { 
-  Play, Lock, Wifi, Heart, Clock, AlertTriangle, CheckCircle2, XCircle, Loader2, BarChart2,
-  Radio, Server, Cpu, Globe, Activity
+  Play, Lock, Wifi, Heart, Clock, CheckCircle2, XCircle, Loader2, AlertTriangle, BarChart2 
 } from 'lucide-react';
 
 function StatusBadge({ status }: { status: 'ONLINE' | 'OFFLINE' }) {
@@ -89,9 +88,6 @@ export default function DashboardPage() {
     } catch { return true; }
   });
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
-  const [packetStage, setPacketStage] = useState<number>(0);
-  const [packetTimerMs, setPacketTimerMs] = useState<number>(0);
-  const [showNetworkInspector, setShowNetworkInspector] = useState<boolean>(true);
 
   const fetchData = useCallback(async () => {
     try {
@@ -152,33 +148,16 @@ export default function DashboardPage() {
   const handleFeedNow = async () => {
     setFeeding(true);
     setFeedResult(null);
-    setPacketStage(1);
-    const startTime = Date.now();
-
-    const stageTimer = setInterval(() => {
-      const elapsed = Date.now() - startTime;
-      setPacketTimerMs(elapsed);
-      if (elapsed > 80 && elapsed <= 250) {
-        setPacketStage(2); // MQTT publish to broker
-      } else if (elapsed > 250 && elapsed <= 500) {
-        setPacketStage(3); // Broker push to Arduino
-      } else if (elapsed > 500) {
-        setPacketStage(4); // Arduino servo physical actuation
-      }
-    }, 40);
 
     try {
       const res = await api.post('/feeds/now', { portion: 1 });
-      setPacketStage(5); // Complete / ACK
       setFeedResult({ success: res.data.success, message: res.data.message });
     } catch (err: unknown) {
       const message =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
         'Feed request failed';
       setFeedResult({ success: false, message });
-      setPacketStage(0);
     } finally {
-      clearInterval(stageTimer);
       setFeeding(false);
       await fetchData();
     }
@@ -226,46 +205,33 @@ export default function DashboardPage() {
       {/* Feed Now + Device Status */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Feed Now */}
-        <div className="card flex flex-col justify-between gap-4 p-6 border-t-4 border-t-cat-500 shadow-sm">
+        <div className="card flex flex-col justify-between gap-5 p-6 border border-stone-200/90 shadow-sm bg-white">
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="font-bold text-gray-900 text-lg">Feed Now</h2>
                 {device?.feedCooldownSeconds === 0 && (
-                  <span className="text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
-                    ⚡ Instant Demo Mode
+                  <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                    Instant Demo Mode (0s Lock)
                   </span>
                 )}
               </div>
-              <p className="text-xs text-gray-500 mt-0.5">Real-time MQTT actuated dispenser</p>
+              <p className="text-xs text-gray-500 mt-0.5">Dispense 1 portion of cat food immediately</p>
             </div>
-            
-            <button
-              onClick={() => setShowNetworkInspector(!showNetworkInspector)}
-              className="text-xs text-cat-600 hover:text-cat-700 font-semibold flex items-center gap-1 bg-cat-50 px-2.5 py-1 rounded-lg border border-cat-100"
-            >
-              <Activity className="w-3.5 h-3.5" />
-              {showNetworkInspector ? 'Hide Packet Flow' : 'Inspect Packet Flow'}
-            </button>
           </div>
           
           <button
             id="feed-now-btn"
             onClick={handleFeedNow}
             disabled={feeding || cooldownRemaining > 0}
-            className={`feed-btn flex items-center justify-center gap-2 shadow-md transition-all ${
-              cooldownRemaining > 0 ? 'bg-gray-400 hover:bg-gray-400 cursor-not-allowed opacity-75' : ''
+            className={`feed-btn flex items-center justify-center gap-2 shadow-sm transition-all ${
+              cooldownRemaining > 0 ? 'bg-gray-200 hover:bg-gray-200 text-gray-500 cursor-not-allowed opacity-80' : ''
             }`}
           >
             {feeding ? (
               <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                <span>
-                  {packetStage === 1 ? 'Dispatching HTTP POST...' :
-                   packetStage === 2 ? 'Publishing MQTT Packet...' :
-                   packetStage === 3 ? 'Broker Routing to Feeder...' :
-                   'Actuating Servo Motor...'}
-                </span>
+                <Loader2 className="w-5 h-5 animate-spin text-white" />
+                <span>Dispensing Food...</span>
               </>
             ) : cooldownRemaining > 0 ? (
               <>
@@ -280,78 +246,15 @@ export default function DashboardPage() {
             )}
           </button>
 
-          {/* Real-Time MQTT Packet Transmission Inspector */}
-          {showNetworkInspector && (
-            <div className="bg-slate-900 text-white p-3.5 rounded-2xl border border-slate-800 space-y-2.5 text-xs">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                <span className="font-mono text-[11px] font-bold text-cat-400 flex items-center gap-1.5">
-                  <span className={`w-2 h-2 rounded-full ${feeding ? 'bg-emerald-400 animate-ping' : 'bg-cat-500'}`} />
-                  REAL-TIME NETWORK PIPELINE
-                </span>
-                <span className="font-mono text-[10px] text-slate-400">
-                  {feeding ? `T+${packetTimerMs}ms` : 'Ready for packet'}
-                </span>
-              </div>
-
-              {/* 4 Nodes */}
-              <div className="grid grid-cols-4 gap-1.5 text-center">
-                <div className={`p-2 rounded-xl border transition-all ${
-                  packetStage === 1 ? 'bg-cat-500/30 border-cat-400 text-cat-200' :
-                  packetStage > 1 ? 'bg-slate-800/80 border-emerald-500/50 text-emerald-400' :
-                  'bg-slate-800/40 border-slate-700/50 text-slate-400'
-                }`}>
-                  <Globe className="w-4 h-4 mx-auto mb-1" />
-                  <div className="font-bold text-[10px]">1. Web UI</div>
-                  <div className="text-[9px] opacity-70">HTTP POST</div>
-                </div>
-
-                <div className={`p-2 rounded-xl border transition-all ${
-                  packetStage === 2 ? 'bg-emerald-500/30 border-emerald-400 text-emerald-200' :
-                  packetStage > 2 ? 'bg-slate-800/80 border-emerald-500/50 text-emerald-400' :
-                  'bg-slate-800/40 border-slate-700/50 text-slate-400'
-                }`}>
-                  <Server className="w-4 h-4 mx-auto mb-1" />
-                  <div className="font-bold text-[10px]">2. Backend</div>
-                  <div className="text-[9px] opacity-70">MQTT QoS 1</div>
-                </div>
-
-                <div className={`p-2 rounded-xl border transition-all ${
-                  packetStage === 3 ? 'bg-amber-500/30 border-amber-400 text-amber-200' :
-                  packetStage > 3 ? 'bg-slate-800/80 border-emerald-500/50 text-emerald-400' :
-                  'bg-slate-800/40 border-slate-700/50 text-slate-400'
-                }`}>
-                  <Radio className="w-4 h-4 mx-auto mb-1" />
-                  <div className="font-bold text-[10px]">3. Broker</div>
-                  <div className="text-[9px] opacity-70">TCP Push</div>
-                </div>
-
-                <div className={`p-2 rounded-xl border transition-all ${
-                  packetStage === 4 ? 'bg-cyan-500/30 border-cyan-400 text-cyan-200 animate-pulse' :
-                  packetStage === 5 ? 'bg-slate-800/80 border-emerald-500/50 text-emerald-400' :
-                  'bg-slate-800/40 border-slate-700/50 text-slate-400'
-                }`}>
-                  <Cpu className="w-4 h-4 mx-auto mb-1" />
-                  <div className="font-bold text-[10px]">4. Arduino</div>
-                  <div className="text-[9px] opacity-70">Pin D9 Servo</div>
-                </div>
-              </div>
-
-              <div className="flex justify-between items-center text-[10px] text-slate-400 pt-1 font-mono">
-                <span>Topic: <code className="text-cat-300">smartcat/geo123/device/command</code></span>
-                <span className="text-emerald-400 font-bold">Network: &lt;150ms Real-Time</span>
-              </div>
-            </div>
-          )}
-
           {feedResult && (
             <div
-              className={`p-3.5 rounded-xl text-sm font-medium animate-fade-in flex items-center gap-2 ${
+              className={`p-3.5 rounded-xl text-sm font-medium animate-fade-in flex items-center gap-2.5 ${
                 feedResult.success
-                  ? 'bg-green-50 text-green-700 border border-green-200'
-                  : 'bg-red-50 text-red-700 border border-red-200'
+                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                  : 'bg-rose-50 text-rose-800 border border-rose-200'
               }`}
             >
-              {feedResult.success ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <XCircle className="w-4 h-4 shrink-0" />}
+              {feedResult.success ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" /> : <XCircle className="w-4 h-4 shrink-0 text-rose-600" />}
               <span>{feedResult.message}</span>
             </div>
           )}
