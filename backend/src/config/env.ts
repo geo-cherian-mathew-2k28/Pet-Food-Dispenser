@@ -30,12 +30,22 @@ export const env = {
   jwtSecret: required('JWT_SECRET'),
   jwtExpiresIn: optional('JWT_EXPIRES_IN', '7d'),
 
-  // MQTT
+  // MQTT - Automatically route to working dedicated cluster if broker.hivemq.com is configured
   mqtt: {
-    host: process.env.MQTT_BROKER_HOST || process.env.MQTT_BROKER_URL || '1929ae9bc33d4ba29b4aa4f909c3ef85.s1.eu.hivemq.cloud',
-    port: parseInt(optional('MQTT_BROKER_PORT', '8883'), 10),
-    username: optional('MQTT_USERNAME', 'geo123'),
-    password: optional('MQTT_PASSWORD', 'GeoCatFeeder2026'),
+    host: (() => {
+      const h = process.env.MQTT_BROKER_HOST || process.env.MQTT_BROKER_URL || '';
+      if (!h || h === 'broker.hivemq.com' || h.includes('broker.emqx.io')) {
+        return '1929ae9bc33d4ba29b4aa4f909c3ef85.s1.eu.hivemq.cloud';
+      }
+      return h;
+    })(),
+    port: parseInt(
+      process.env.MQTT_BROKER_PORT ||
+      ((process.env.MQTT_BROKER_HOST?.includes('hivemq.cloud') || !process.env.MQTT_BROKER_HOST) ? '8883' : '8883'),
+      10
+    ),
+    username: process.env.MQTT_USERNAME || 'geo123',
+    password: process.env.MQTT_PASSWORD || 'GeoCatFeeder2026',
     clientId: optional('MQTT_CLIENT_ID', 'smartcat-backend'),
     namespace: optional('MQTT_TOPIC_NAMESPACE', 'geo123'),
   },

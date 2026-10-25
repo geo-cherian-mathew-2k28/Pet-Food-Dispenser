@@ -469,9 +469,6 @@ void connectMQTT() {
   Serial.print(MQTT_BROKER); Serial.print(':'); Serial.println(MQTT_PORT);
   showFrame(FRAME_MQTT_DOTS);
 
-  #if USE_TLS
-    wifiClient.setCACert(HIVEMQ_ROOT_CA);
-  #endif
 
   char currentClientId[44];
   randomSeed(analogRead(A0) ^ millis());
