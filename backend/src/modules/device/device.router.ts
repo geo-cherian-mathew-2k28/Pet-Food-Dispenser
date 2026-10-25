@@ -11,7 +11,9 @@ import {
   updateDeviceStatusRecord, 
   getFeedCooldownSeconds, 
   setFeedCooldownSeconds,
-  getCooldownRemainingSeconds
+  getCooldownRemainingSeconds,
+  getArchitectureVisibility,
+  setArchitectureVisibility
 } from './device.service';
 
 export const deviceRouter = Router();
@@ -28,7 +30,7 @@ deviceRouter.get('/status', async (req: Request, res: Response, next: NextFuncti
       device: {
         ...device,
         feedCooldownSeconds: getFeedCooldownSeconds(),
-        showArchitectureToUsers: device.showArchitectureToUsers ?? true,
+        showArchitectureToUsers: getArchitectureVisibility(),
       },
       mqttConnected: getMqttConnectionStatus(),
       isDispensing: getIsDispensing(),
@@ -79,6 +81,7 @@ deviceRouter.post('/settings', async (req: Request, res: Response, next: NextFun
         res.status(400).json({ error: 'showArchitectureToUsers must be a boolean' });
         return;
       }
+      setArchitectureVisibility(showArchitectureToUsers);
     }
 
     // feedCooldownSeconds is admin-only
@@ -97,7 +100,6 @@ deviceRouter.post('/settings', async (req: Request, res: Response, next: NextFun
     const updateData: Record<string, unknown> = {};
     if (servoOpenDurationMs !== undefined) updateData.servoOpenDurationMs = servoOpenDurationMs;
     if (maxFeedsPerDay !== undefined) updateData.maxFeedsPerDay = maxFeedsPerDay;
-    if (showArchitectureToUsers !== undefined) updateData.showArchitectureToUsers = showArchitectureToUsers;
 
     let device;
     if (Object.keys(updateData).length > 0) {
@@ -111,6 +113,7 @@ deviceRouter.post('/settings', async (req: Request, res: Response, next: NextFun
       device: {
         ...device,
         feedCooldownSeconds: getFeedCooldownSeconds(),
+        showArchitectureToUsers: getArchitectureVisibility(),
       },
     });
   } catch (err) {

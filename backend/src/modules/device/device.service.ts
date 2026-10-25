@@ -11,6 +11,7 @@ import { logger } from '../../utils/logger';
 const SETTINGS_FILE = path.join(__dirname, '../../../data/device_settings.json');
 
 let inMemoryCooldownSeconds: number = env.feedCooldownSeconds;
+let inMemoryShowArchitecture: boolean = true;
 let lastFeedCompletedAt: Date | null = null;
 let cachedDevice: any = null;
 let cachedDeviceTime = 0;
@@ -35,6 +36,10 @@ function loadRuntimeSettings(): void {
         inMemoryCooldownSeconds = data.feedCooldownSeconds;
         logger.info(`Loaded runtime feed cooldown: ${inMemoryCooldownSeconds}s`);
       }
+      if (typeof data.showArchitectureToUsers === 'boolean') {
+        inMemoryShowArchitecture = data.showArchitectureToUsers;
+        logger.info(`Loaded runtime show architecture: ${inMemoryShowArchitecture}`);
+      }
     }
   } catch (err) {
     logger.warn('Could not read runtime settings file, using default');
@@ -49,15 +54,38 @@ export function getFeedCooldownSeconds(): number {
 
 export function setFeedCooldownSeconds(val: number): number {
   inMemoryCooldownSeconds = Math.max(0, val);
+  persistSettings();
+  return inMemoryCooldownSeconds;
+}
+
+export function getArchitectureVisibility(): boolean {
+  return inMemoryShowArchitecture;
+}
+
+export function setArchitectureVisibility(val: boolean): boolean {
+  inMemoryShowArchitecture = val;
+  persistSettings();
+  return inMemoryShowArchitecture;
+}
+
+function persistSettings(): void {
   try {
     const dir = path.dirname(SETTINGS_FILE);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ feedCooldownSeconds: inMemoryCooldownSeconds }, null, 2));
-    logger.info(`Persisted runtime feed cooldown: ${inMemoryCooldownSeconds}s`);
+    fs.writeFileSync(
+      SETTINGS_FILE,
+      JSON.stringify(
+        {
+          feedCooldownSeconds: inMemoryCooldownSeconds,
+          showArchitectureToUsers: inMemoryShowArchitecture,
+        },
+        null,
+        2
+      )
+    );
   } catch (err) {
     logger.warn('Could not write runtime settings file');
   }
-  return inMemoryCooldownSeconds;
 }
 
 export async function getDeviceStatusRecord() {
@@ -89,7 +117,6 @@ export async function getDeviceStatusRecord() {
         status: firstDevice.status,
         servoOpenDurationMs: firstDevice.servoOpenDurationMs,
         maxFeedsPerDay: firstDevice.maxFeedsPerDay,
-        showArchitectureToUsers: firstDevice.showArchitectureToUsers,
         wifiStrength: firstDevice.wifiStrength,
         uptimeSeconds: firstDevice.uptimeSeconds,
         lastHeartbeatAt: firstDevice.lastHeartbeatAt,
@@ -112,7 +139,6 @@ export async function getDeviceStatusRecord() {
       status: 'OFFLINE',
       servoOpenDurationMs: 1500,
       maxFeedsPerDay: env.maxFeedsPerDay,
-      showArchitectureToUsers: true,
     },
   });
   cachedDevice = created;
