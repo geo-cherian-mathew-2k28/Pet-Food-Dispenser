@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
-import { Trash2, Shield, User, AlertCircle, RefreshCw, Mail, MessageSquare, Settings, CheckCircle2, Loader2, AlertTriangle, Bug, RotateCcw, Cpu } from 'lucide-react';
+import { Trash2, Shield, User, AlertCircle, RefreshCw, Mail, MessageSquare, Settings, CheckCircle2, Loader2, AlertTriangle, Bug, RotateCcw, Cpu, Clock, Gauge } from 'lucide-react';
 
 interface UserItem {
   id: string;
@@ -18,6 +18,7 @@ interface DeviceSettings {
   maxFeedsPerDay: number;
   servoOpenDurationMs: number;
   showArchitectureToUsers?: boolean;
+  feedCooldownSeconds?: number;
 }
 
 export default function AdminPage() {
@@ -29,6 +30,12 @@ export default function AdminPage() {
   // Daily limit settings
   const [deviceSettings, setDeviceSettings] = useState<DeviceSettings | null>(null);
   const [maxFeedsPerDay, setMaxFeedsPerDay] = useState<number>(10);
+  const [cooldownSeconds, setCooldownSeconds] = useState<number>(60);
+  const [servoDurationMs, setServoDurationMs] = useState<number>(1500);
+  const [savingCooldown, setSavingCooldown] = useState(false);
+  const [cooldownMessage, setCooldownMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [savingServoDuration, setSavingServoDuration] = useState(false);
+  const [servoDurationMessage, setServoDurationMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [showArchToUsers, setShowArchToUsers] = useState<boolean>(() => {
     const saved = localStorage.getItem('smartcat_show_arch');
     return saved !== null ? saved === 'true' : true;
@@ -55,6 +62,12 @@ export default function AdminPage() {
         const dev = deviceRes.data.device;
         setDeviceSettings(dev);
         setMaxFeedsPerDay(dev.maxFeedsPerDay ?? 10);
+        if (typeof dev.feedCooldownSeconds === 'number') {
+          setCooldownSeconds(dev.feedCooldownSeconds);
+        }
+        if (typeof dev.servoOpenDurationMs === 'number') {
+          setServoDurationMs(dev.servoOpenDurationMs);
+        }
         if (typeof dev.showArchitectureToUsers === 'boolean') {
           setShowArchToUsers(dev.showArchitectureToUsers);
           localStorage.setItem('smartcat_show_arch', String(dev.showArchitectureToUsers));
@@ -160,6 +173,50 @@ export default function AdminPage() {
       setLimitMessage({ type: 'error', text: err.response?.data?.error || 'Failed to update limit' });
     } finally {
       setSavingLimit(false);
+    }
+  };
+
+  const handleSaveCooldown = async (newVal?: number) => {
+    const targetVal = typeof newVal === 'number' ? newVal : cooldownSeconds;
+    setSavingCooldown(true);
+    setCooldownMessage(null);
+    try {
+      const res = await api.post('/device/settings', { feedCooldownSeconds: targetVal });
+      setCooldownSeconds(targetVal);
+      if (res.data.device) {
+        setDeviceSettings(res.data.device);
+      }
+      setCooldownMessage({
+        type: 'success',
+        text: targetVal === 0 
+          ? 'Feed cooldown DISABLED (0s)! Button locking is off — you can test instantly.' 
+          : `Feed cooldown updated to ${targetVal} seconds.`
+      });
+    } catch (err: any) {
+      setCooldownMessage({ type: 'error', text: err.response?.data?.error || 'Failed to update cooldown' });
+    } finally {
+      setSavingCooldown(false);
+    }
+  };
+
+  const handleSaveServoDuration = async (newVal?: number) => {
+    const targetVal = typeof newVal === 'number' ? newVal : servoDurationMs;
+    setSavingServoDuration(true);
+    setServoDurationMessage(null);
+    try {
+      const res = await api.post('/device/settings', { servoOpenDurationMs: targetVal });
+      setServoDurationMs(targetVal);
+      if (res.data.device) {
+        setDeviceSettings(res.data.device);
+      }
+      setServoDurationMessage({
+        type: 'success',
+        text: `Motor open duration set to ${targetVal}ms (${(targetVal / 1000).toFixed(1)}s)`
+      });
+    } catch (err: any) {
+      setServoDurationMessage({ type: 'error', text: err.response?.data?.error || 'Failed to update duration' });
+    } finally {
+      setSavingServoDuration(false);
     }
   };
 
@@ -296,6 +353,209 @@ export default function AdminPage() {
           <div className="mt-4 pt-4 border-t border-gray-50 flex flex-wrap gap-4 text-xs text-gray-500">
             <span>Current limit: <strong className="text-gray-800">{deviceSettings.maxFeedsPerDay} feeds/day</strong></span>
             <span>Servo open: <strong className="text-gray-800">{(deviceSettings.servoOpenDurationMs / 1000).toFixed(1)}s</strong></span>
+          </div>
+        )}
+      </div>
+
+      {/* ── Feed Cooldown & Button Lock Duration Control ───────────────────── */}
+      <div className="card p-6 border-l-4 border-l-emerald-500">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
+              <Clock className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="font-bold text-gray-900 text-lg">Feed Cooldown & Button Lock Time</h2>
+              <p className="text-xs text-gray-500">
+                Adjust how long the <strong>"Feed Now"</strong> button locks after dispensing. Set to <strong>0s</strong> during presentations to test immediately without waiting!
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Presets */}
+        <div className="my-4">
+          <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">
+            Quick Presets
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { label: '⚡ 0s (Instant Demo / No Wait)', val: 0, highlight: true },
+              { label: '5s (Quick Test)', val: 5 },
+              { label: '15s', val: 15 },
+              { label: '30s', val: 30 },
+              { label: '60s (Standard)', val: 60 },
+            ].map((preset) => (
+              <button
+                key={preset.val}
+                onClick={() => {
+                  setCooldownSeconds(preset.val);
+                  handleSaveCooldown(preset.val);
+                }}
+                disabled={savingCooldown}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                  cooldownSeconds === preset.val
+                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                    : preset.highlight
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                    : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Slider & Custom Input */}
+        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end pt-2">
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Custom Lock Duration: <span className="font-bold text-emerald-600">{cooldownSeconds}s</span>
+              {cooldownSeconds === 0 && (
+                <span className="ml-2 text-xs bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                  Locking Disabled (Instant)
+                </span>
+              )}
+            </label>
+            <input
+              type="range"
+              min="0"
+              max="180"
+              step="5"
+              value={cooldownSeconds}
+              onChange={(e) => setCooldownSeconds(Number(e.target.value))}
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+            />
+            <div className="flex justify-between text-xs text-gray-400 mt-1.5">
+              <span>0s (instant)</span>
+              <span>60s (default)</span>
+              <span>180s (3 mins)</span>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 min-w-[140px]">
+            <button
+              onClick={() => handleSaveCooldown()}
+              disabled={savingCooldown}
+              className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all disabled:opacity-50"
+            >
+              {savingCooldown ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Saving...</span>
+                </>
+              ) : (
+                <span>Save Cooldown</span>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {cooldownMessage && (
+          <div className={`mt-3 p-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 ${
+            cooldownMessage.type === 'success'
+              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+              : 'bg-red-50 text-red-700 border border-red-200'
+          }`}>
+            {cooldownMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+            <span>{cooldownMessage.text}</span>
+          </div>
+        )}
+      </div>
+
+      {/* ── Servo Motor Hold Duration Control ──────────────────────────────── */}
+      <div className="card p-6 border-l-4 border-l-blue-500">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
+            <Gauge className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="font-bold text-gray-900 text-lg">Motor Dispensing Duration</h2>
+            <p className="text-xs text-gray-500">
+              Control how long the servo stays open per feed portion (1000ms = 1 second). Faster duration makes testing quicker.
+            </p>
+          </div>
+        </div>
+
+        <div className="my-4">
+          <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">
+            Duration Presets
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { label: '⚡ 1.0s (Fast)', val: 1000 },
+              { label: '1.5s (Standard)', val: 1500 },
+              { label: '2.0s', val: 2000 },
+              { label: '3.0s (Large Portion)', val: 3000 },
+              { label: '4.0s (Max Drop)', val: 4000 },
+            ].map((p) => (
+              <button
+                key={p.val}
+                onClick={() => {
+                  setServoDurationMs(p.val);
+                  handleSaveServoDuration(p.val);
+                }}
+                disabled={savingServoDuration}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                  servoDurationMs === p.val
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                    : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end pt-2">
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Active Duration: <span className="font-bold text-blue-600">{(servoDurationMs / 1000).toFixed(1)}s</span> ({servoDurationMs} ms)
+            </label>
+            <input
+              type="range"
+              min="500"
+              max="5000"
+              step="250"
+              value={servoDurationMs}
+              onChange={(e) => setServoDurationMs(Number(e.target.value))}
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+            />
+            <div className="flex justify-between text-xs text-gray-400 mt-1.5">
+              <span>0.5s</span>
+              <span>2.5s</span>
+              <span>5.0s</span>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 min-w-[140px]">
+            <button
+              onClick={() => handleSaveServoDuration()}
+              disabled={savingServoDuration}
+              className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all disabled:opacity-50"
+            >
+              {savingServoDuration ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Saving...</span>
+                </>
+              ) : (
+                <span>Save Duration</span>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {servoDurationMessage && (
+          <div className={`mt-3 p-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 ${
+            servoDurationMessage.type === 'success'
+              ? 'bg-blue-50 text-blue-800 border border-blue-200'
+              : 'bg-red-50 text-red-700 border border-red-200'
+          }`}>
+            {servoDurationMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+            <span>{servoDurationMessage.text}</span>
           </div>
         )}
       </div>

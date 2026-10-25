@@ -59,8 +59,9 @@ char MQTT_CLIENT_ID[40] = "smartcat-uno-";
 // ── Servo ─────────────────────────────────────────────────────────────────────
 const int SERVO_PIN        = 9;
 const int CLOSED_ANGLE     = 0;
-const int OPEN_ANGLE       = 160;
+const int OPEN_ANGLE       = 90;       // 90° standard open (prevents mechanical binding/gear stall)
 const int DEFAULT_DURATION = 2000;
+const bool KEEP_SERVO_ATTACHED = true; // Prevents UNO R4 timer de-allocation bugs caused by repeated attach/detach
 
 // ── Timing ────────────────────────────────────────────────────────────────────
 const unsigned long HEARTBEAT_INTERVAL_MS = 25000;   // 25s (below 90s server timeout)
@@ -372,16 +373,19 @@ void setup() {
   mqttClient.setSocketTimeout(8);  // 8s socket timeout
 
   // Servo self-test
-  Serial.println(F("Servo self-test..."));
-  feederServo.attach(SERVO_PIN);
+  Serial.println(F("Servo initializing..."));
+  feederServo.attach(SERVO_PIN, 544, 2400);
   feederServo.write(CLOSED_ANGLE);
   delay(300);
+  Serial.println(F("Servo self-test sweep (0° -> 90° -> 0°)..."));
   feederServo.write(OPEN_ANGLE);
-  delay(400);
+  delay(500);
   feederServo.write(CLOSED_ANGLE);
-  delay(300);
-  feederServo.detach();
-  Serial.println(F("Servo self-test done. Servo detached."));
+  delay(400);
+  if (!KEEP_SERVO_ATTACHED) {
+    feederServo.detach();
+  }
+  Serial.println(F("Servo self-test complete."));
 
   connectWiFi();
   deviceUptimeStart = millis();
@@ -441,8 +445,29 @@ void loop() {
     if (input.equalsIgnoreCase("feed")) {
       Serial.println(F("[SERIAL] Manual feed triggered"));
       dispenseFood("serial-test", 1, DEFAULT_DURATION);
+    } else if (input.equalsIgnoreCase("test") || input.equalsIgnoreCase("sweep")) {
+      Serial.println(F("[SERIAL] Sweeping servo: 0° -> 90° -> 160° -> 0°"));
+      if (!feederServo.attached()) feederServo.attach(SERVO_PIN, 544, 2400);
+      feederServo.write(0);   delay(800);
+      feederServo.write(90);  delay(800);
+      feederServo.write(160); delay(800);
+      feederServo.write(0);   delay(800);
+      Serial.println(F("[SERIAL] Sweep complete!"));
+    } else if (input.equalsIgnoreCase("open")) {
+      Serial.print(F("[SERIAL] Opening servo to ")); Serial.println(OPEN_ANGLE);
+      if (!feederServo.attached()) feederServo.attach(SERVO_PIN, 544, 2400);
+      feederServo.write(OPEN_ANGLE);
+    } else if (input.equalsIgnoreCase("close")) {
+      Serial.print(F("[SERIAL] Closing servo to ")); Serial.println(CLOSED_ANGLE);
+      if (!feederServo.attached()) feederServo.attach(SERVO_PIN, 544, 2400);
+      feederServo.write(CLOSED_ANGLE);
+    } else if (input.startsWith("angle ") || input.startsWith("a ")) {
+      int ang = input.substring(input.indexOf(' ') + 1).toInt();
+      Serial.print(F("[SERIAL] Moving to angle: ")); Serial.println(ang);
+      if (!feederServo.attached()) feederServo.attach(SERVO_PIN, 544, 2400);
+      feederServo.write(ang);
     } else {
-      Serial.println(F("[SERIAL] Type 'feed' to test servo"));
+      Serial.println(F("[SERIAL] Commands: 'feed', 'test', 'open', 'close', 'angle <0-180>'"));
     }
   }
 }
@@ -648,9 +673,11 @@ void dispenseFood(const String& requestId, int portion, int durationMs) {
   // Show static dispensing frame on LED (avoid animating to prevent PWM timer conflicts)
   showFrame(FRAME_DISP_A);
 
-  Serial.print(F("[SERVO] Attaching on pin ")); Serial.println(SERVO_PIN);
-  feederServo.attach(SERVO_PIN);
-  delay(250); // Allow servo to stabilize after attach
+  if (!feederServo.attached()) {
+    Serial.print(F("[SERVO] Attaching on pin ")); Serial.println(SERVO_PIN);
+    feederServo.attach(SERVO_PIN, 544, 2400);
+    delay(200);
+  }
 
   Serial.print(F("[SERVO] Opening to ")); Serial.print(OPEN_ANGLE); Serial.println(F("°"));
   feederServo.write(OPEN_ANGLE);
@@ -667,8 +694,12 @@ void dispenseFood(const String& requestId, int portion, int durationMs) {
   feederServo.write(CLOSED_ANGLE);
   delay(600); // Allow ample time for closing swing to complete
 
-  feederServo.detach();
-  Serial.println(F("[SERVO] Detached (idle)"));
+  if (!KEEP_SERVO_ATTACHED) {
+    feederServo.detach();
+    Serial.println(F("[SERVO] Detached (idle)"));
+  } else {
+    Serial.println(F("[SERVO] Holding position at closed angle"));
+  }
 
   unsigned long elapsed = millis() - startMs;
   Serial.print(F("[SERVO] Done in ")); Serial.print(elapsed); Serial.println(F(" ms"));

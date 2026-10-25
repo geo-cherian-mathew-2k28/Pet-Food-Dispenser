@@ -6,7 +6,7 @@ import { prisma } from '../../config/prisma';
 import { env } from '../../config/env';
 import { authenticate } from '../../middleware/auth.middleware';
 import { getMqttConnectionStatus, releaseDispensingLock, getIsDispensing } from '../mqtt/mqtt.service';
-import { getDeviceStatusRecord, updateDeviceStatusRecord } from './device.service';
+import { getDeviceStatusRecord, updateDeviceStatusRecord, getFeedCooldownSeconds, setFeedCooldownSeconds } from './device.service';
 
 export const deviceRouter = Router();
 
@@ -21,7 +21,7 @@ deviceRouter.get('/status', async (req: Request, res: Response, next: NextFuncti
     res.json({
       device: {
         ...device,
-        feedCooldownSeconds: env.feedCooldownSeconds,
+        feedCooldownSeconds: getFeedCooldownSeconds(),
         showArchitectureToUsers: device.showArchitectureToUsers ?? true,
       },
       mqttConnected: getMqttConnectionStatus(),
@@ -37,9 +37,10 @@ deviceRouter.get('/status', async (req: Request, res: Response, next: NextFuncti
 // - servoOpenDurationMs: all authenticated users
 // - maxFeedsPerDay: admin only
 // - showArchitectureToUsers: admin only
+// - feedCooldownSeconds: admin only
 deviceRouter.post('/settings', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { servoOpenDurationMs, maxFeedsPerDay, showArchitectureToUsers } = req.body;
+    const { servoOpenDurationMs, maxFeedsPerDay, showArchitectureToUsers, feedCooldownSeconds } = req.body;
 
     // Validate servo duration if provided
     if (servoOpenDurationMs !== undefined) {
@@ -73,19 +74,38 @@ deviceRouter.post('/settings', async (req: Request, res: Response, next: NextFun
       }
     }
 
+    // feedCooldownSeconds is admin-only
+    if (feedCooldownSeconds !== undefined) {
+      if (req.user?.role !== 'ADMIN') {
+        res.status(403).json({ error: 'Only admins can change the feed cooldown' });
+        return;
+      }
+      if (typeof feedCooldownSeconds !== 'number' || feedCooldownSeconds < 0 || feedCooldownSeconds > 3600) {
+        res.status(400).json({ error: 'feedCooldownSeconds must be a number between 0 and 3600 seconds' });
+        return;
+      }
+      setFeedCooldownSeconds(feedCooldownSeconds);
+    }
+
     const updateData: Record<string, unknown> = {};
     if (servoOpenDurationMs !== undefined) updateData.servoOpenDurationMs = servoOpenDurationMs;
     if (maxFeedsPerDay !== undefined) updateData.maxFeedsPerDay = maxFeedsPerDay;
     if (showArchitectureToUsers !== undefined) updateData.showArchitectureToUsers = showArchitectureToUsers;
 
-    if (Object.keys(updateData).length === 0) {
-      res.status(400).json({ error: 'No valid settings fields provided' });
-      return;
+    let device;
+    if (Object.keys(updateData).length > 0) {
+      device = await updateDeviceStatusRecord(updateData);
+    } else {
+      device = await getDeviceStatusRecord();
     }
 
-    const device = await updateDeviceStatusRecord(updateData);
-
-    res.json({ message: 'Settings updated successfully', device });
+    res.json({
+      message: 'Settings updated successfully',
+      device: {
+        ...device,
+        feedCooldownSeconds: getFeedCooldownSeconds(),
+      },
+    });
   } catch (err) {
     next(err);
   }

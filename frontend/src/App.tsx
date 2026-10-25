@@ -25,6 +25,16 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return user?.role === 'ADMIN' ? <>{children}</> : <Navigate to="/dashboard" replace />;
 }
 
+function ArchitectureRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, user } = useAuth();
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (user?.role === 'ADMIN') return <>{children}</>;
+
+  const showArch = localStorage.getItem('smartcat_show_arch');
+  const allowed = showArch === null || showArch === 'true';
+  return allowed ? <>{children}</> : <Navigate to="/dashboard" replace />;
+}
+
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
   return isAuthenticated ? <Navigate to="/dashboard" replace /> : <>{children}</>;
@@ -57,7 +67,7 @@ export default function App() {
         />
         <Route
           path="/architecture"
-          element={<PrivateRoute><Layout><ArchitecturePage /></Layout></PrivateRoute>}
+          element={<ArchitectureRoute><Layout><ArchitecturePage /></Layout></ArchitectureRoute>}
         />
         <Route
           path="/admin"

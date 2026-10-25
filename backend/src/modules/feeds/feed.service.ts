@@ -13,7 +13,7 @@ import { isLockStale, clearLockTimestamp } from '../../utils/dispensingLock';
 import { generateRequestId } from '../../utils/requestId';
 import { logger } from '../../utils/logger';
 
-import { getDeviceStatusRecord } from '../device/device.service';
+import { getDeviceStatusRecord, getFeedCooldownSeconds } from '../device/device.service';
 
 export type FeedSource = 'WEB' | 'TELEGRAM' | 'SCHEDULE';
 
@@ -98,21 +98,24 @@ export async function triggerFeed(req: FeedRequest): Promise<FeedResult> {
   }
 
   // ── 3. Check cooldown ──────────────────────────────────────────────────────
-  const lastSuccessfulFeed = await prisma.feedLog.findFirst({
-    where: { status: 'SUCCESS' },
-    orderBy: { completedAt: 'desc' },
-  });
+  const cooldownPeriod = getFeedCooldownSeconds();
+  if (cooldownPeriod > 0) {
+    const lastSuccessfulFeed = await prisma.feedLog.findFirst({
+      where: { status: 'SUCCESS' },
+      orderBy: { completedAt: 'desc' },
+    });
 
-  if (lastSuccessfulFeed?.completedAt) {
-    const elapsedSeconds = (Date.now() - lastSuccessfulFeed.completedAt.getTime()) / 1000;
-    if (elapsedSeconds < env.feedCooldownSeconds) {
-      const waitSeconds = Math.ceil(env.feedCooldownSeconds - elapsedSeconds);
-      logger.warn(`Feed rejected: cooldown active, ${waitSeconds}s remaining`);
-      return {
-        success: false,
-        message: `Feeder is cooling down. Please wait ${waitSeconds} seconds.`,
-        requestId,
-      };
+    if (lastSuccessfulFeed?.completedAt) {
+      const elapsedSeconds = (Date.now() - lastSuccessfulFeed.completedAt.getTime()) / 1000;
+      if (elapsedSeconds < cooldownPeriod) {
+        const waitSeconds = Math.ceil(cooldownPeriod - elapsedSeconds);
+        logger.warn(`Feed rejected: cooldown active, ${waitSeconds}s remaining`);
+        return {
+          success: false,
+          message: `Feeder is cooling down. Please wait ${waitSeconds} seconds.`,
+          requestId,
+        };
+      }
     }
   }
 

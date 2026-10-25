@@ -35,12 +35,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     navigate('/login');
   };
 
+  const canViewArchitecture = user?.role === 'ADMIN' || showArch;
+
   const navItems = [
     { to: '/dashboard', icon: Home, label: 'Dashboard' },
     { to: '/history',   icon: ClipboardList, label: 'History' },
     { to: '/schedules', icon: Clock, label: 'Schedules' },
     { to: '/settings',  icon: Settings, label: 'Settings' },
-    ...(showArch ? [{ to: '/architecture', icon: Cpu, label: 'Architecture' }] : []),
+    ...(canViewArchitecture ? [{ to: '/architecture', icon: Cpu, label: 'Architecture' }] : []),
     ...(user?.role === 'ADMIN' ? [{ to: '/admin', icon: Shield, label: 'Admin Panel' }] : []),
   ];
 

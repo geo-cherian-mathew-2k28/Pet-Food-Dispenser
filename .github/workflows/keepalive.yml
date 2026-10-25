@@ -1,0 +1,27 @@
+name: Keep-Alive (Supabase & Render)
+
+on:
+  schedule:
+    # Runs every 12 hours (at 00:00 and 12:00 UTC)
+    - cron: '0 */12 * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase Project API (Prevents Inactivity Auto-Pause)
+        run: |
+          echo "Pinging Supabase Project..."
+          curl -s -o /dev/null -w "Supabase HTTP status: %{http_code}\n" https://fgpqrhbmkobfinfjsckx.supabase.co || true
+
+      - name: Ping Render Backend Health Check (Wakes Up Backend & Queries DB)
+        run: |
+          # If RENDER_BACKEND_URL secret is provided, ping it; otherwise try the public Render app if configured
+          BACKEND_URL="${{ secrets.RENDER_BACKEND_URL }}"
+          if [ -n "$BACKEND_URL" ]; then
+            echo "Pinging Render Backend at $BACKEND_URL/api/health..."
+            curl -s -o /dev/null -w "Render Backend HTTP status: %{http_code}\n" "$BACKEND_URL/api/health" || true
+          else
+            echo "RENDER_BACKEND_URL secret not set. You can optionally add it in repo Settings > Secrets > Actions."
+          fi

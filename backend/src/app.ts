@@ -11,6 +11,7 @@ import { schedulesRouter } from './modules/schedules/schedules.router';
 import { deviceRouter } from './modules/device/device.router';
 import { errorHandler } from './middleware/error.middleware';
 import { logger } from './utils/logger';
+import { prisma } from './config/prisma';
 
 const app = express();
 
@@ -45,9 +46,17 @@ app.use((req, _res, next) => {
 });
 
 // ── Health check (no auth needed) ─────────────────────────────────────────────
-app.get('/api/health', (_req, res) => {
+app.get('/api/health', async (_req, res) => {
+  let dbStatus = 'connected';
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+  } catch (err: any) {
+    dbStatus = `disconnected: ${err?.message || err}`;
+  }
+
   res.json({
-    status: 'ok',
+    status: dbStatus === 'connected' ? 'ok' : 'degraded',
+    database: dbStatus,
     service: 'SmartCat Feeder Backend',
     timestamp: new Date().toISOString(),
   });
