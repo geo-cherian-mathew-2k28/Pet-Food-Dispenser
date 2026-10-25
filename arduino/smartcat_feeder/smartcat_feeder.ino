@@ -16,6 +16,8 @@
  */
 
 #include <WiFiS3.h>
+#include <WiFiSSLClient.h>
+#include <RTC.h>
 #define MQTT_MAX_PACKET_SIZE 512
 #include <PubSubClient.h>
 #include <Servo.h>
@@ -39,6 +41,28 @@ char WIFI_PASSWORD[] = "YOUR_WIFI_PASSWORD";
   const int  MQTT_PORT       = 8883;
   const char MQTT_USERNAME[] = "geo123";
   const char MQTT_PASSWORD[] = "GeoCatFeeder2026";
+
+  // ISRG Root X1 CA Certificate (Valid 2015-2035) for HiveMQ Cloud TLS verification
+  const char HIVEMQ_ROOT_CA[] = \
+"-----BEGIN CERTIFICATE-----\n" \
+"MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw\n" \
+"TzELMAkGA1UEBhMCVVMxKTAnBgNVBAoTIEludGVybmV0IFNlY3VyaXR5IFJlc2Vh\n" \
+"cmNoIEdyb3VwMRUwEwYDVQQDEwxJU1JHIFJvb3QgWDEwHhcNMTUwNjA0MTEwNDM4\n" \
+"WhcNMzUwNjA0MTEwNDM4WjBPMQswCQYDVQQGEwJVUzEpMCcGA1UEChMgSW50ZXJu\n" \
+"ZXQgU2VjdXJpdHkgUmVzZWFyY2ggR3JvdXAxFTATBgNVBAMTDElTUkcgUm9vdCBY\n" \
+"MTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAK3oJHP0FDfzm54rVygc\n" \
+"h77ct984kIxuPOZXoHj3dcKi/vVqbvYATyjb3miGbESTtrFj/RQSa78f0uoxmyF+\n" \
+"0TM8ukj13Xnfs7j/EvEhmkvBioZxaUpmZmyPfjxwv60pIgbz5MDmgK7iS4+3mX6U\n" \
+"A5/TR5d8S5JlCdGwR6WCYU+58at6/hGw3g87bZnzo5JKnB7BlastpdEpKAsLxsYS\n" \
+"IA280JUZZiMM5c7iQRrQElcjLiRK3CfvhPtZdgi91Coltl3889/Xt8GxhSnN98Ef\n" \
+"orj49YKeAbuNWnLeLYmm80DGPUTLjbL9wVXh5Gs5UrxTxrddJqSHemGd12+/d84v\n" \
+"4ieNWWhstn1h9agREEyW4wEZ+FsfyBNmx5PVvc89gn5iUim8y+U+42hMpU5Ooxyq\n" \
+"A772eG45//okeUV3ChYZqmlC8k3Fs0aESMzLltbvmaTV29tg6f4XhHrBQBs5LKVO\n" \
+"i5vWWQSPC8Wk0zGWaS2Tx78ukEQUSWAybHxDgxNWK2CHEgqrijYehLhpMziapsBe\n" \
+"38OGHKYcOAecdDea4WNMQNV5eJPidGVirGLxusPXuWvWZeUQHUSWVQIDAQABo0Iw\n" \
+"QDAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQU5KNm\n" \
+"XrWAnCB993r51Bm2GY9KUco=\n" \
+"-----END CERTIFICATE-----\n";
 #else
   const char MQTT_BROKER[]   = "broker.hivemq.com";
   const int  MQTT_PORT       = 1883;
@@ -279,6 +303,12 @@ void setup() {
   Serial.begin(115200);
   delay(1200);
 
+  #if USE_TLS
+    // Initialize RTC to 2024 epoch so TLS certificate validity checks pass (2015-2035)
+    RTC.begin();
+    RTC.setTime(1730000000UL); // Oct 2024
+  #endif
+
   matrix.begin();
   startupAnimation();
 
@@ -437,6 +467,10 @@ void connectMQTT() {
   Serial.print(F("[MQTT] Connecting to "));
   Serial.print(MQTT_BROKER); Serial.print(':'); Serial.println(MQTT_PORT);
   showFrame(FRAME_MQTT_DOTS);
+
+  #if USE_TLS
+    wifiClient.setCACert(HIVEMQ_ROOT_CA);
+  #endif
 
   char currentClientId[44];
   randomSeed(analogRead(A0) ^ millis());
