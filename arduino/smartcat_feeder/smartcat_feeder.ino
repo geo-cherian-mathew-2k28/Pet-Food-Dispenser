@@ -304,9 +304,10 @@ void setup() {
   delay(1200);
 
   #if USE_TLS
-    // Initialize RTC to 2024 epoch so TLS certificate validity checks pass (2015-2035)
+    // Initialize RTC to 2024-2026 epoch so TLS certificate validity checks pass (2015-2035)
     RTC.begin();
-    RTC.setTime(1730000000UL); // Oct 2024
+    RTCTime startTime(1730000000UL);
+    RTC.setTime(startTime);
   #endif
 
   matrix.begin();
