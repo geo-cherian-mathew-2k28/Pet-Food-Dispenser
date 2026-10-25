@@ -1,24 +1,22 @@
-// SmartCat Feeder - Clean Minimalist MQTT & Computer Networks Architecture
-// 100% Light Themed, presentation-grade interactive walkthrough.
+// SmartCat Feeder - Visual Graphical MQTT Flowchart & Architecture
+// Designed for crystal-clear clarity: Producer, Broker, Subscriber & Topic Isolation.
+// 100% Light Theme, graphical flowchart diagrams, no code or dense walls of text.
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import api from '../lib/api';
 import {
-  Cpu,
-  Server,
-  Globe,
-  Radio,
-  Zap,
-  ChevronLeft,
-  ChevronRight,
   Send,
-  Download,
+  Radio,
+  Cpu,
+  Globe,
+  ArrowRight,
   CheckCircle2,
   Play,
-  Pause,
   RotateCcw,
-  ArrowRight,
-  Info
+  Sparkles,
+  RefreshCw,
+  Activity,
+  Layers
 } from 'lucide-react';
 
 interface DeviceStatusResponse {
@@ -34,652 +32,620 @@ interface DeviceStatusResponse {
   isDispensing: boolean;
 }
 
-type ScenarioKey = 'web' | 'schedule' | 'telegram' | 'heartbeat';
+type FlowScenario = 'feed' | 'response' | 'heartbeat';
 
-interface StepDetail {
-  title: string;
-  sender: string;
-  receiver: string;
-  protocol: string;
-  topic?: string;
-  summary: string;
-  activeNode: number; // 0: Client, 1: Server, 2: Broker, 3: Arduino
+interface FlowStep {
+  stepNumber: number;
+  producerName: string;
+  producerRole: string;
+  brokerAction: string;
+  subscriberName: string;
+  subscriberRole: string;
+  topic: string;
+  packetSummary: string;
+  activePoint: 'producer' | 'broker' | 'subscriber';
 }
 
-const SCENARIOS: Record<ScenarioKey, { title: string; subtitle: string; steps: StepDetail[] }> = {
-  web: {
-    title: 'Manual "Feed Now" Command',
-    subtitle: 'Real-time MQTT dispatch from web dashboard to feeder',
+const FLOW_SCENARIOS: Record<FlowScenario, {
+  title: string;
+  shortDesc: string;
+  color: string;
+  steps: FlowStep[];
+}> = {
+  feed: {
+    title: '🐱 Triggering Food (Feed Command)',
+    shortDesc: 'You click "Feed Now" on your phone/laptop → Cat gets food in 1 second!',
+    color: 'border-orange-200 bg-orange-50/40 text-orange-800',
     steps: [
       {
-        title: 'Step 1: User Clicks "Feed Cat Now"',
-        sender: 'Browser Dashboard',
-        receiver: 'Express Backend',
-        protocol: 'HTTP/2 REST POST (/api/feeds/now)',
-        summary: 'The web app verifies user session and sends an authenticated feeding request to the server.',
-        activeNode: 0,
+        stepNumber: 1,
+        producerName: 'Web Browser / Phone',
+        producerRole: 'PRODUCER (Sender)',
+        brokerAction: 'Accepting HTTP click...',
+        subscriberName: 'Backend Server',
+        subscriberRole: 'Cloud API Worker',
+        topic: '/api/feeds/now',
+        packetSummary: 'You click "Feed Now" → Your browser tells the cloud server: "Dispense 1 portion of food!"',
+        activePoint: 'producer',
       },
       {
-        title: 'Step 2: Server Publishes MQTT Packet',
-        sender: 'Express Backend',
-        receiver: 'MQTT Cloud Broker',
-        protocol: 'MQTT v3.1.1 (QoS 1 Guaranteed Delivery)',
+        stepNumber: 2,
+        producerName: 'Backend Server',
+        producerRole: 'PRODUCER (MQTT Publisher)',
+        brokerAction: 'Routing packet instantly (<50ms)...',
+        subscriberName: 'HiveMQ Cloud Broker',
+        subscriberRole: 'BROKER (Central Post Office)',
         topic: 'smartcat/geo123/device/command',
-        summary: 'The server creates a JSON command packet ({"command":"feed", "portion":1}) and publishes it to the broker.',
-        activeNode: 1,
+        packetSummary: 'Server wraps the command into a tiny MQTT packet and sends it to the central Post Office (Broker).',
+        activePoint: 'broker',
       },
       {
-        title: 'Step 3: Broker Routes Packet to Arduino',
-        sender: 'MQTT Cloud Broker',
-        receiver: 'Arduino UNO R4 WiFi',
-        protocol: 'TCP Push over Port 1883 / 8883',
+        stepNumber: 3,
+        producerName: 'HiveMQ Cloud Broker',
+        producerRole: 'BROKER (Central Post Office)',
+        brokerAction: 'Pushing directly to subscriber...',
+        subscriberName: 'Arduino Feeder (UNO R4)',
+        subscriberRole: 'SUBSCRIBER (Receiver & Actor)',
         topic: 'smartcat/geo123/device/command',
-        summary: 'The broker immediately delivers the message down the open TCP connection to the subscribed Arduino in <100ms.',
-        activeNode: 2,
-      },
-      {
-        title: 'Step 4: Servo Motor Actuation',
-        sender: 'Arduino UNO R4',
-        receiver: 'SG90 Servo (Pin D9)',
-        protocol: 'Hardware PWM 50Hz (1500µs pulse)',
-        summary: 'The Arduino outputs PWM pulses on Digital Pin D9, swinging the servo to 90° to dispense kibble into the bowl.',
-        activeNode: 3,
-      },
-      {
-        title: 'Step 5: Completion Confirmation',
-        sender: 'Arduino UNO R4',
-        receiver: 'Backend & Dashboard',
-        protocol: 'MQTT Response (smartcat/geo123/device/response)',
-        summary: 'Arduino publishes "Food dispensed" response. Server logs SUCCESS and the dashboard shows feed complete.',
-        activeNode: 1,
+        packetSummary: 'The Broker pushes the packet directly to the Cat Feeder! The servo motor rotates and drops food into the bowl! 🥣',
+        activePoint: 'subscriber',
       },
     ],
   },
-  schedule: {
-    title: 'Automated Scheduled Feed',
-    subtitle: 'Background cron job triggering feeding automatically',
+  response: {
+    title: '✅ Food Dropped Confirmation',
+    shortDesc: 'Feeder says "Food delivered!" → Web dashboard shows green checkmark!',
+    color: 'border-emerald-200 bg-emerald-50/40 text-emerald-800',
     steps: [
       {
-        title: 'Step 1: Background Timer Fires',
-        sender: 'Backend Cron Engine',
-        receiver: 'Database',
-        protocol: 'Node-Cron & SQL Query',
-        summary: 'Internal scheduler checks active feeding schedules for the current time (e.g. 08:00 AM).',
-        activeNode: 1,
+        stepNumber: 1,
+        producerName: 'Arduino Feeder (UNO R4)',
+        producerRole: 'PRODUCER (Now Feeder is Sender!)',
+        brokerAction: 'Food dispensed. Preparing ACK...',
+        subscriberName: 'HiveMQ Cloud Broker',
+        subscriberRole: 'BROKER (Central Post Office)',
+        topic: 'smartcat/geo123/device/response',
+        packetSummary: 'The motor finishes rotating! Feeder sends a quick letter: "Done! 1 portion dispensed in 1500ms".',
+        activePoint: 'producer',
       },
       {
-        title: 'Step 2: Server Publishes Feed Packet',
-        sender: 'Express Backend',
-        receiver: 'MQTT Cloud Broker',
-        protocol: 'MQTT QoS 1',
-        topic: 'smartcat/geo123/device/command',
-        summary: 'Server publishes automated scheduled feed command to the broker channel.',
-        activeNode: 1,
+        stepNumber: 2,
+        producerName: 'HiveMQ Cloud Broker',
+        producerRole: 'BROKER (Post Office)',
+        brokerAction: 'Forwarding to subscribed backend...',
+        subscriberName: 'Backend Server',
+        subscriberRole: 'SUBSCRIBER (Cloud Database)',
+        topic: 'smartcat/geo123/device/response',
+        packetSummary: 'The Broker delivers the letter to the Server. Server logs SUCCESS into Supabase.',
+        activePoint: 'broker',
       },
       {
-        title: 'Step 3: Feeder Actuates Motor',
-        sender: 'MQTT Broker',
-        receiver: 'Arduino UNO R4',
-        protocol: 'TCP Message Delivery',
-        topic: 'smartcat/geo123/device/command',
-        summary: 'Arduino receives scheduled instruction and rotates servo motor for the configured portion.',
-        activeNode: 3,
-      },
-      {
-        title: 'Step 4: Log Saved to History',
-        sender: 'Arduino UNO R4',
-        receiver: 'PostgreSQL Database',
-        protocol: 'MQTT Response -> DB Log',
-        summary: 'Execution timestamp and portion count are logged for pet care tracking and daily limits.',
-        activeNode: 1,
-      },
-    ],
-  },
-  telegram: {
-    title: 'Telegram Remote Feed',
-    subtitle: 'Triggering feeder from Telegram chat with /feed',
-    steps: [
-      {
-        title: 'Step 1: User Sends /feed in Telegram',
-        sender: 'Telegram Mobile App',
-        receiver: 'Telegram Bot API',
-        protocol: 'HTTPS Webhook',
-        summary: 'Pet owner taps "/feed" or uses keyboard button in Telegram chat.',
-        activeNode: 0,
-      },
-      {
-        title: 'Step 2: Bot Dispatches MQTT Packet',
-        sender: 'Express Bot Service',
-        receiver: 'MQTT Cloud Broker',
-        protocol: 'MQTT QoS 1',
-        topic: 'smartcat/geo123/device/command',
-        summary: 'Bot verifies user permission and publishes feed instruction to MQTT broker.',
-        activeNode: 1,
-      },
-      {
-        title: 'Step 3: Hardware Dispenses Food',
-        sender: 'MQTT Broker',
-        receiver: 'Arduino UNO R4 WiFi',
-        protocol: 'MQTT over TCP',
-        summary: 'Arduino moves servo to drop food and replies with success confirmation.',
-        activeNode: 3,
-      },
-      {
-        title: 'Step 4: Bot Replies in Telegram Chat',
-        sender: 'Telegram Bot',
-        receiver: 'User Phone',
-        protocol: 'Telegram Bot API Message',
-        summary: 'Bot replies: "Cat fed successfully! (Portion 1 dispensed)".',
-        activeNode: 0,
+        stepNumber: 3,
+        producerName: 'Backend Server',
+        producerRole: 'Notifier',
+        brokerAction: 'Resolving browser awaiter...',
+        subscriberName: 'Your Web Dashboard',
+        subscriberRole: 'SUBSCRIBER (User Screen)',
+        topic: 'HTTP 200 / WebSocket',
+        packetSummary: 'Your web dashboard turns green: "Food dispensed successfully!" The button starts its cooldown lock.',
+        activePoint: 'subscriber',
       },
     ],
   },
   heartbeat: {
-    title: '25-Second Heartbeat Telemetry',
-    subtitle: 'Periodic status pulse proving device is online',
+    title: '💓 25-Second "I am Alive" Pulse',
+    shortDesc: 'Feeder automatically reports Wi-Fi signal & uptime every 25 seconds.',
+    color: 'border-blue-200 bg-blue-50/40 text-blue-800',
     steps: [
       {
-        title: 'Step 1: Arduino Checks Telemetry',
-        sender: 'Arduino UNO R4',
-        receiver: 'Internal WiFi Radio',
-        protocol: 'Internal Timer (Every 25s)',
-        summary: 'Arduino checks uptime and reads Wi-Fi signal strength (RSSI in dBm).',
-        activeNode: 3,
-      },
-      {
-        title: 'Step 2: Heartbeat Published to Broker',
-        sender: 'Arduino UNO R4',
-        receiver: 'MQTT Cloud Broker',
-        protocol: 'MQTT QoS 0 (Lightweight ~80 bytes)',
+        stepNumber: 1,
+        producerName: 'Arduino Feeder (UNO R4)',
+        producerRole: 'PRODUCER (Telemetry Sensor)',
+        brokerAction: 'Reading Wi-Fi dBm and uptime...',
+        subscriberName: 'HiveMQ Cloud Broker',
+        subscriberRole: 'BROKER (Message Router)',
         topic: 'smartcat/geo123/device/heartbeat',
-        summary: 'Arduino publishes tiny heartbeat payload: {"status":"online", "wifiStrength": -55}.',
-        activeNode: 2,
+        packetSummary: 'Feeder sends a 40-byte ping: "I am online! Wi-Fi: -62dBm, Uptime: 450s".',
+        activePoint: 'producer',
       },
       {
-        title: 'Step 3: Server Updates Online Status',
-        sender: 'MQTT Broker',
-        receiver: 'Backend & Dashboard',
-        protocol: 'MQTT Subscribe -> SQL Update',
-        summary: 'Server marks device ONLINE and updates RSSI strength on the web dashboard.',
-        activeNode: 1,
+        stepNumber: 2,
+        producerName: 'HiveMQ Cloud Broker',
+        producerRole: 'BROKER (Message Router)',
+        brokerAction: 'Sorting ping to server queue...',
+        subscriberName: 'Backend Server',
+        subscriberRole: 'SUBSCRIBER (Device Watchdog)',
+        topic: 'smartcat/geo123/device/heartbeat',
+        packetSummary: 'Broker pushes the ping to the server watchdog. Server updates the green ONLINE badge.',
+        activePoint: 'subscriber',
+      },
+      {
+        stepNumber: 3,
+        producerName: 'System Watchdog',
+        producerRole: 'Safety Sentinel',
+        brokerAction: 'Timer reset to 0...',
+        subscriberName: 'Live Dashboard',
+        subscriberRole: 'Live Monitor',
+        topic: 'Heartbeat State: HEALTHY',
+        packetSummary: 'If no ping arrives for 120s (e.g. power cut), the server safely marks device as OFFLINE.',
+        activePoint: 'subscriber',
       },
     ],
   },
 };
 
 export default function ArchitecturePage() {
-  const [deviceData, setDeviceData] = useState<DeviceStatusResponse | null>(null);
-  const [activeTab, setActiveTab] = useState<'simulator' | 'comparison' | 'roles' | 'qos' | 'hardware'>('simulator');
-
-  // Simulator State
-  const [selectedScenario, setSelectedScenario] = useState<ScenarioKey>('web');
-  const [currentStep, setCurrentStep] = useState<number>(0);
+  const [deviceInfo, setDeviceInfo] = useState<DeviceStatusResponse | null>(null);
+  const [activeScenario, setActiveScenario] = useState<FlowScenario>('feed');
+  const [currentStepIdx, setCurrentStepIdx] = useState<number>(0);
+  const [selectedUserTopic, setSelectedUserTopic] = useState<'geo' | 'alice' | 'bob'>('geo');
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const timerRef = useRef<any>(null);
+
+  const scenarioData = FLOW_SCENARIOS[activeScenario];
+  const step = scenarioData.steps[currentStepIdx] || scenarioData.steps[0];
 
   useEffect(() => {
-    api.get('/device/status').then((res) => setDeviceData(res.data)).catch(() => {});
+    let timer: ReturnType<typeof setInterval>;
+    if (isPlaying) {
+      timer = setInterval(() => {
+        setCurrentStepIdx((prev) => (prev + 1) % scenarioData.steps.length);
+      }, 2600);
+    }
+    return () => clearInterval(timer);
+  }, [isPlaying, scenarioData.steps.length]);
+
+  useEffect(() => {
+    // Fetch live device status
+    api.get('/device/status')
+      .then((res) => setDeviceInfo(res.data))
+      .catch(() => {});
   }, []);
 
-  const scenario = SCENARIOS[selectedScenario];
-  const step = scenario.steps[currentStep];
-  const totalSteps = scenario.steps.length;
-
-  useEffect(() => {
-    if (isPlaying) {
-      timerRef.current = setTimeout(() => {
-        if (currentStep < totalSteps - 1) {
-          setCurrentStep((prev) => prev + 1);
-        } else {
-          setIsPlaying(false);
-        }
-      }, 2500);
-    } else {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    }
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, [isPlaying, currentStep, totalSteps]);
-
-  const handleScenarioChange = (s: ScenarioKey) => {
+  const handleSelectScenario = (key: FlowScenario) => {
+    setActiveScenario(key);
+    setCurrentStepIdx(0);
     setIsPlaying(false);
-    setSelectedScenario(s);
-    setCurrentStep(0);
   };
 
-  const isOnline = deviceData?.device?.status === 'ONLINE';
-  const isMqtt = deviceData?.mqttConnected ?? true;
-
   return (
-    <div className="space-y-6 pb-12 animate-slide-up text-stone-800">
-      {/* Header */}
-      <div className="bg-white p-6 rounded-2xl border border-stone-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="space-y-8 animate-slide-up pb-12 max-w-6xl mx-auto">
+      {/* ─── Page Header ────────────────────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-200 pb-5">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold text-cat-700 bg-cat-50 px-2.5 py-0.5 rounded-full border border-cat-200">
-              Computer Networks Project
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-cat-100 text-cat-700 border border-cat-200">
+              Interactive System Flowchart
+            </span>
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Real-Time MQTT QoS 1
             </span>
           </div>
-          <h1 className="text-2xl font-bold text-stone-900 mt-1">SmartCat Feeder IoT Architecture</h1>
-          <p className="text-xs text-stone-500 mt-0.5">
-            Clear visual explanation of MQTT publish-subscribe networking and hardware actuation
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-950 mt-1.5 tracking-tight">
+            How SmartCat Feeder Works
+          </h1>
+          <p className="text-sm text-gray-600 mt-1">
+            Visual explanation of the 3 roles: <b>Producer</b>, <b>Broker</b>, and <b>Subscriber</b>.
           </p>
         </div>
 
-        {/* Status badges */}
-        <div className="flex items-center gap-2">
-          <div className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border ${
-            isMqtt ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
-          }`}>
-            <span className={`w-2 h-2 rounded-full ${isMqtt ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-            MQTT Broker: {isMqtt ? 'Connected' : 'Standby'}
-          </div>
-
-          <div className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border ${
-            isOnline ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-stone-100 text-stone-600 border-stone-200'
-          }`}>
-            <Radio className="w-3.5 h-3.5 text-blue-600" />
-            Feeder: {isOnline ? 'Online' : 'Standby'}
+        {/* Live Device Pill */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-3 shadow-xs flex items-center gap-3 self-start sm:self-auto">
+          <div className={`w-3 h-3 rounded-full ${deviceInfo?.device?.status === 'ONLINE' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+          <div className="text-xs">
+            <p className="font-bold text-gray-900">
+              Hardware: {deviceInfo?.device?.status === 'ONLINE' ? 'Arduino UNO R4 (Online)' : 'Feeder (Offline)'}
+            </p>
+            <p className="text-gray-500 font-mono text-[11px]">
+              Broker: {deviceInfo?.mqttConnected ? 'HiveMQ Cloud Connected' : 'Checking Broker...'}
+            </p>
           </div>
         </div>
       </div>
 
-      {/* Navigation Tabs */}
-      <div className="flex flex-wrap gap-2">
-        {[
-          { key: 'simulator', label: 'Packet Simulator' },
-          { key: 'comparison', label: 'MQTT vs HTTP' },
-          { key: 'roles', label: 'The 4 MQTT Roles' },
-          { key: 'qos', label: 'Quality of Service (QoS)' },
-          { key: 'hardware', label: 'Hardware & Servo Wiring' },
-        ].map((tab) => (
+      {/* ─── Section 1: The 8-Year-Old Explanation of MQTT ────────────────────── */}
+      <div className="bg-gradient-to-r from-orange-50/70 via-amber-50/50 to-stone-50 border border-orange-200/80 rounded-2xl p-6 shadow-xs">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="p-1.5 bg-cat-500 text-white rounded-lg">
+            <Sparkles className="w-5 h-5" />
+          </div>
+          <h2 className="text-lg font-bold text-gray-900">
+            What is MQTT? (The Post Office Analogy)
+          </h2>
+        </div>
+        
+        <p className="text-sm text-gray-700 mb-6 leading-relaxed max-w-3xl">
+          Imagine you want to send a message to your friend. With regular websites (HTTP), you have to call them and wait for them to answer. 
+          With <b>MQTT</b>, there is a magical <b>Post Office (Broker)</b> that handles everything in 0.05 seconds!
+        </p>
+
+        {/* 3 Core Roles: Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* 1. Producer */}
+          <div className="bg-white border-2 border-orange-200 rounded-xl p-5 shadow-xs relative overflow-hidden">
+            <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center mb-3 font-extrabold text-lg">
+              1
+            </div>
+            <span className="text-[10px] uppercase tracking-wider font-extrabold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-md border border-orange-200">
+              The Sender
+            </span>
+            <h3 className="text-base font-bold text-gray-900 mt-2">1. PRODUCER (Publisher)</h3>
+            <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+              Creates a message and drops it off with an address called a <b>Topic</b>.
+            </p>
+            <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-700 font-medium">
+              <span className="text-gray-400">In this project:</span> <br/>
+              <b>Your Phone / Web App</b> when clicking Feed!
+            </div>
+          </div>
+
+          {/* 2. Broker */}
+          <div className="bg-white border-2 border-amber-300 rounded-xl p-5 shadow-xs relative overflow-hidden">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center mb-3 font-extrabold text-lg">
+              2
+            </div>
+            <span className="text-[10px] uppercase tracking-wider font-extrabold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+              The Post Office
+            </span>
+            <h3 className="text-base font-bold text-gray-900 mt-2">2. BROKER (Central Hub)</h3>
+            <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+              Never sleeps! Instantly routes messages to whoever subscribed to that exact Topic.
+            </p>
+            <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-700 font-medium">
+              <span className="text-gray-400">In this project:</span> <br/>
+              <b>HiveMQ Cloud Cluster</b> in Frankfurt, Germany.
+            </div>
+          </div>
+
+          {/* 3. Subscriber */}
+          <div className="bg-white border-2 border-emerald-300 rounded-xl p-5 shadow-xs relative overflow-hidden">
+            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center mb-3 font-extrabold text-lg">
+              3
+            </div>
+            <span className="text-[10px] uppercase tracking-wider font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+              The Receiver
+            </span>
+            <h3 className="text-base font-bold text-gray-900 mt-2">3. SUBSCRIBER (Listener)</h3>
+            <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+              Registers for a specific Topic mailbox and acts the exact millisecond a message arrives.
+            </p>
+            <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-700 font-medium">
+              <span className="text-gray-400">In this project:</span> <br/>
+              <b>Arduino Feeder</b> (opens the food door!).
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ─── Section 2: Interactive Visual Flowchart Simulation ──────────────── */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-xs space-y-6">
+        <div>
+          <span className="text-xs font-bold text-cat-600 uppercase tracking-wider">Step-by-Step Simulator</span>
+          <h2 className="text-xl font-bold text-gray-950 mt-1">
+            Visual Network Flowchart
+          </h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Select a scenario below to watch data packets travel between the 3 roles:
+          </p>
+        </div>
+
+        {/* Scenario Pills */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {(Object.keys(FLOW_SCENARIOS) as FlowScenario[]).map((key) => {
+            const sc = FLOW_SCENARIOS[key];
+            const isSelected = activeScenario === key;
+            return (
+              <button
+                key={key}
+                onClick={() => handleSelectScenario(key)}
+                className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                  isSelected
+                    ? 'border-cat-500 bg-cat-50/50 shadow-xs'
+                    : 'border-gray-200 hover:border-gray-300 bg-stone-50/50'
+                }`}
+              >
+                <p className={`font-bold text-sm ${isSelected ? 'text-cat-800' : 'text-gray-800'}`}>
+                  {sc.title}
+                </p>
+                <p className="text-xs text-gray-500 mt-1 line-clamp-1">{sc.shortDesc}</p>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* ── Visual Flowchart Diagram Canvas ── */}
+        <div className="bg-stone-50/70 border border-stone-200 rounded-2xl p-6 relative overflow-hidden">
+          {/* 3 Graphical Flowchart Nodes Connected by Line */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative items-center">
+            
+            {/* NODE 1: PRODUCER */}
+            <div className={`p-5 rounded-2xl border-2 transition-all relative ${
+              step.activePoint === 'producer'
+                ? 'bg-white border-orange-500 shadow-md ring-4 ring-orange-100'
+                : 'bg-white/80 border-gray-200 opacity-80'
+            }`}>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-orange-100 text-orange-700">
+                  Step 1: Producer
+                </span>
+                <Globe className="w-5 h-5 text-orange-500" />
+              </div>
+              <h4 className="font-bold text-gray-900 text-base">{step.producerName}</h4>
+              <p className="text-xs text-orange-600 font-semibold mt-0.5">{step.producerRole}</p>
+              
+              <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-1.5 text-xs text-gray-500">
+                <Send className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                <span className="font-mono text-[11px] truncate">Publishes to topic</span>
+              </div>
+            </div>
+
+            {/* NODE 2: BROKER */}
+            <div className={`p-5 rounded-2xl border-2 transition-all relative ${
+              step.activePoint === 'broker'
+                ? 'bg-white border-amber-500 shadow-md ring-4 ring-amber-100'
+                : 'bg-white/80 border-gray-200 opacity-80'
+            }`}>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-amber-100 text-amber-700">
+                  Step 2: Broker
+                </span>
+                <Radio className="w-5 h-5 text-amber-600" />
+              </div>
+              <h4 className="font-bold text-gray-900 text-base">HiveMQ Cloud Broker</h4>
+              <p className="text-xs text-amber-700 font-semibold mt-0.5">Central Message Router</p>
+              
+              <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-1.5 text-xs text-gray-500">
+                <RefreshCw className="w-3.5 h-3.5 text-amber-600 shrink-0 animate-spin" />
+                <span className="font-mono text-[11px] truncate">{step.brokerAction}</span>
+              </div>
+            </div>
+
+            {/* NODE 3: SUBSCRIBER */}
+            <div className={`p-5 rounded-2xl border-2 transition-all relative ${
+              step.activePoint === 'subscriber'
+                ? 'bg-white border-emerald-500 shadow-md ring-4 ring-emerald-100'
+                : 'bg-white/80 border-gray-200 opacity-80'
+            }`}>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700">
+                  Step 3: Subscriber
+                </span>
+                <Cpu className="w-5 h-5 text-emerald-600" />
+              </div>
+              <h4 className="font-bold text-gray-900 text-base">{step.subscriberName}</h4>
+              <p className="text-xs text-emerald-700 font-semibold mt-0.5">{step.subscriberRole}</p>
+              
+              <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-1.5 text-xs text-gray-500">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="font-mono text-[11px] truncate">Receives & acts immediately</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Current Step Explanation Card */}
+          <div className="mt-6 bg-white border border-stone-200 rounded-xl p-4 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-3 mb-3">
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 rounded-full bg-cat-500 text-white flex items-center justify-center font-bold text-xs">
+                  {step.stepNumber}
+                </span>
+                <span className="font-bold text-gray-900 text-sm">
+                  Active Topic: <code className="font-mono text-cat-700 bg-cat-50 px-2 py-0.5 rounded border border-cat-200">{step.topic}</code>
+                </span>
+              </div>
+              <span className="text-xs text-gray-500 font-medium">
+                Step {step.stepNumber} of {scenarioData.steps.length}
+              </span>
+            </div>
+
+            <p className="text-sm text-gray-800 leading-relaxed font-medium">
+              👉 {step.packetSummary}
+            </p>
+          </div>
+
+          {/* Interactive Flow Controls */}
+          <div className="mt-5 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsPlaying(!isPlaying)}
+                className="px-3.5 py-1.5 rounded-lg bg-cat-500 hover:bg-cat-600 text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+              >
+                <Play className={`w-3.5 h-3.5 ${isPlaying ? 'fill-white' : ''}`} />
+                {isPlaying ? 'Pause' : 'Auto Play'}
+              </button>
+              <button
+                onClick={() => {
+                  setCurrentStepIdx(0);
+                  setIsPlaying(false);
+                }}
+                className="px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-100 text-gray-700 font-semibold text-xs flex items-center gap-1 shadow-xs transition-colors cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Reset
+              </button>
+            </div>
+
+            {/* Step navigation dots */}
+            <div className="flex items-center gap-2">
+              {scenarioData.steps.map((_, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    setCurrentStepIdx(idx);
+                    setIsPlaying(false);
+                  }}
+                  className={`w-7 h-7 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    currentStepIdx === idx
+                      ? 'bg-cat-500 text-white shadow-xs'
+                      : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {idx + 1}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ─── Section 3: How Different Users Get Different Topics (Multi-Tenant) ── */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-xs space-y-6">
+        <div>
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-blue-500 text-white rounded-lg">
+              <Layers className="w-4 h-4" />
+            </div>
+            <h2 className="text-xl font-bold text-gray-950">
+              How Different Users Get Different Topics (No Crossed Wires!)
+            </h2>
+          </div>
+          <p className="text-xs text-gray-600 mt-1.5 leading-relaxed">
+            What if 1,000 cat owners use the same HiveMQ Broker? How does Geo's cat not eat Alice's cat food?
+            <br />
+            <b>Answer:</b> Every feeder has its own unique <b>Topic Address</b>, like an apartment mailbox number!
+          </p>
+        </div>
+
+        {/* Interactive Topic Selector */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key as any)}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
-              activeTab === tab.key
-                ? 'bg-cat-500 text-white border-cat-500 shadow-sm'
-                : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'
+            onClick={() => setSelectedUserTopic('geo')}
+            className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
+              selectedUserTopic === 'geo'
+                ? 'border-orange-500 bg-orange-50/60 shadow-xs'
+                : 'border-gray-200 hover:border-gray-300 bg-stone-50/40'
             }`}
           >
-            {tab.label}
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-sm text-gray-900">User: Geo (This Project)</span>
+              <span className="w-2.5 h-2.5 rounded-full bg-orange-500" />
+            </div>
+            <p className="text-xs font-mono text-orange-700 mt-1 truncate">smartcat/geo123/device/command</p>
           </button>
-        ))}
+
+          <button
+            onClick={() => setSelectedUserTopic('alice')}
+            className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
+              selectedUserTopic === 'alice'
+                ? 'border-purple-500 bg-purple-50/60 shadow-xs'
+                : 'border-gray-200 hover:border-gray-300 bg-stone-50/40'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-sm text-gray-900">User: Alice (Neighbor)</span>
+              <span className="w-2.5 h-2.5 rounded-full bg-purple-500" />
+            </div>
+            <p className="text-xs font-mono text-purple-700 mt-1 truncate">smartcat/alice_cat/device/command</p>
+          </button>
+
+          <button
+            onClick={() => setSelectedUserTopic('bob')}
+            className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
+              selectedUserTopic === 'bob'
+                ? 'border-cyan-500 bg-cyan-50/60 shadow-xs'
+                : 'border-gray-200 hover:border-gray-300 bg-stone-50/40'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-sm text-gray-900">User: Bob (Friend)</span>
+              <span className="w-2.5 h-2.5 rounded-full bg-cyan-500" />
+            </div>
+            <p className="text-xs font-mono text-cyan-700 mt-1 truncate">smartcat/bob_cat/device/command</p>
+          </button>
+        </div>
+
+        {/* Visual Topic Routing Diagram */}
+        <div className="bg-stone-50 border border-stone-200 rounded-xl p-5">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-center md:text-left">
+            {/* Sender */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-xs flex-1 w-full">
+              <span className="text-[10px] font-extrabold uppercase text-gray-400">Owner App</span>
+              <h4 className="font-bold text-gray-900 text-sm mt-0.5">
+                {selectedUserTopic === 'geo' ? 'Geo\'s Phone' : selectedUserTopic === 'alice' ? 'Alice\'s Phone' : 'Bob\'s Phone'}
+              </h4>
+              <p className="text-xs text-gray-500 mt-1">Publishes to:</p>
+              <code className="text-[11px] font-mono font-bold text-cat-700 bg-cat-50 px-2 py-0.5 rounded border border-cat-200 block mt-1 truncate">
+                smartcat/{selectedUserTopic === 'geo' ? 'geo123' : selectedUserTopic === 'alice' ? 'alice_cat' : 'bob_cat'}/device/command
+              </code>
+            </div>
+
+            <ArrowRight className="w-5 h-5 text-gray-400 hidden md:block shrink-0" />
+
+            {/* Central Broker Mailbox */}
+            <div className="bg-white border-2 border-amber-300 rounded-xl p-4 shadow-xs flex-1 w-full">
+              <span className="text-[10px] font-extrabold uppercase text-amber-700">Central Broker</span>
+              <h4 className="font-bold text-gray-900 text-sm mt-0.5">HiveMQ Cloud</h4>
+              <p className="text-xs text-gray-600 mt-1">
+                Reads address: <b>{selectedUserTopic === 'geo' ? 'geo123' : selectedUserTopic === 'alice' ? 'alice_cat' : 'bob_cat'}</b>
+              </p>
+              <span className="inline-block mt-1 text-[11px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded font-medium border border-amber-200">
+                Routes only to matching subscriber
+              </span>
+            </div>
+
+            <ArrowRight className="w-5 h-5 text-gray-400 hidden md:block shrink-0" />
+
+            {/* Destination Feeder */}
+            <div className="bg-white border-2 border-emerald-400 rounded-xl p-4 shadow-xs flex-1 w-full">
+              <span className="text-[10px] font-extrabold uppercase text-emerald-700">Physical Feeder</span>
+              <h4 className="font-bold text-gray-900 text-sm mt-0.5">
+                {selectedUserTopic === 'geo' ? 'Geo\'s Feeder (Your Arduino)' : selectedUserTopic === 'alice' ? 'Alice\'s Feeder' : 'Bob\'s Feeder'}
+              </h4>
+              <p className="text-xs text-emerald-700 font-semibold mt-1">
+                Subscribed ONLY to {selectedUserTopic === 'geo' ? 'geo123' : selectedUserTopic === 'alice' ? 'alice_cat' : 'bob_cat'}!
+              </p>
+              <p className="text-[11px] text-gray-500 mt-0.5">
+                Ignores all other user messages completely.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* ── TAB 1: INTERACTIVE PACKET SIMULATOR ────────────────────────────── */}
-      {activeTab === 'simulator' && (
-        <div className="bg-white p-6 md:p-8 rounded-2xl border border-stone-200 shadow-sm space-y-6">
-          <div className="border-b border-stone-100 pb-4">
-            <h2 className="text-xl font-bold text-stone-900">Interactive Packet Flow Walkthrough</h2>
-            <p className="text-xs text-stone-500 mt-1">
-              Select a scenario and click <strong>Next Step</strong> to walk through how data travels across the network.
-            </p>
+      {/* ─── Section 4: Computer Networks Presentation Highlights ────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-xs">
+          <div className="flex items-center gap-2 mb-2">
+            <Radio className="w-4 h-4 text-cat-500" />
+            <h3 className="font-bold text-gray-900 text-sm">Why MQTT Instead of Regular HTTP?</h3>
           </div>
-
-          {/* Scenario Selection */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {(Object.keys(SCENARIOS) as ScenarioKey[]).map((key) => {
-              const item = SCENARIOS[key];
-              return (
-                <button
-                  key={key}
-                  onClick={() => handleScenarioChange(key)}
-                  className={`p-3 rounded-xl border text-left transition-all ${
-                    selectedScenario === key
-                      ? 'bg-cat-50 border-cat-400 text-cat-900 shadow-sm'
-                      : 'bg-stone-50 hover:bg-stone-100 border-stone-200 text-stone-700'
-                  }`}
-                >
-                  <div className="font-bold text-xs">{item.title}</div>
-                  <div className="text-[10px] text-stone-500 mt-0.5 line-clamp-1">{item.subtitle}</div>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* 4 Connected Nodes Diagram */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
-            {[
-              { idx: 0, title: '1. User Trigger', subtitle: 'Web Dashboard / Telegram', icon: Globe },
-              { idx: 1, title: '2. Express Server', subtitle: 'Backend API & Controller', icon: Server },
-              { idx: 2, title: '3. MQTT Broker', subtitle: 'Cloud Message Router', icon: Radio },
-              { idx: 3, title: '4. Arduino Feeder', subtitle: 'UNO R4 & SG90 Servo', icon: Cpu },
-            ].map((node) => {
-              const Icon = node.icon;
-              const isActive = step.activeNode === node.idx;
-              return (
-                <div
-                  key={node.idx}
-                  className={`p-4 rounded-xl border-2 transition-all ${
-                    isActive
-                      ? 'bg-cat-50/70 border-cat-500 shadow-sm scale-102 ring-2 ring-cat-200'
-                      : 'bg-stone-50/60 border-stone-200 opacity-70'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-bold uppercase text-stone-500">{node.title}</span>
-                    {isActive && <span className="w-2 h-2 rounded-full bg-cat-500 animate-pulse" />}
-                  </div>
-                  <div className="w-10 h-10 rounded-xl bg-cat-500 text-white flex items-center justify-center mb-2 shadow-sm">
-                    <Icon className="w-5 h-5" />
-                  </div>
-                  <p className="text-xs font-bold text-stone-900">{node.subtitle}</p>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Current Step Explanation Card (100% Light Themed) */}
-          <div className="bg-stone-50 p-5 rounded-xl border border-stone-200 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-200/80 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold bg-cat-500 text-white px-2.5 py-0.5 rounded-full">
-                  Step {currentStep + 1} of {totalSteps}
-                </span>
-                <h3 className="font-bold text-sm text-stone-900">{step.title}</h3>
-              </div>
-
-              <div className="text-xs text-stone-500 font-medium">
-                Protocol: <strong className="text-stone-800">{step.protocol}</strong>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              <div>
-                <span className="text-stone-500 text-[11px] block">TRANSMISSION:</span>
-                <span className="font-semibold text-stone-800 flex items-center gap-1.5 mt-0.5">
-                  <span className="text-cat-700">{step.sender}</span>
-                  <ArrowRight className="w-3.5 h-3.5 text-stone-400" />
-                  <span className="text-emerald-700">{step.receiver}</span>
-                </span>
-              </div>
-
-              {step.topic && (
-                <div>
-                  <span className="text-stone-500 text-[11px] block">MQTT TOPIC:</span>
-                  <code className="font-mono text-xs text-stone-800 bg-white px-2 py-0.5 rounded border border-stone-200 inline-block mt-0.5">
-                    {step.topic}
-                  </code>
-                </div>
-              )}
-            </div>
-
-            <div className="p-3 bg-white rounded-lg border border-stone-200 text-xs text-stone-700 leading-relaxed flex items-start gap-2">
-              <Info className="w-4 h-4 text-cat-500 shrink-0 mt-0.5" />
-              <span>{step.summary}</span>
-            </div>
-
-            {/* Step Controls */}
-            <div className="flex items-center justify-between pt-2">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setIsPlaying(!isPlaying)}
-                  className="px-3.5 py-1.5 rounded-xl bg-cat-500 hover:bg-cat-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all"
-                >
-                  {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-                  {isPlaying ? 'Pause' : 'Auto Play'}
-                </button>
-
-                <button
-                  onClick={() => {
-                    setIsPlaying(false);
-                    setCurrentStep(0);
-                  }}
-                  className="px-3 py-1.5 rounded-xl bg-white border border-stone-200 hover:bg-stone-100 text-stone-700 font-bold text-xs flex items-center gap-1 transition-all"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" /> Reset
-                </button>
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => {
-                    setIsPlaying(false);
-                    setCurrentStep((prev) => Math.max(0, prev - 1));
-                  }}
-                  disabled={currentStep === 0}
-                  className="px-3 py-1.5 rounded-xl bg-white border border-stone-200 hover:bg-stone-100 disabled:opacity-40 text-stone-700 font-bold text-xs flex items-center gap-1"
-                >
-                  <ChevronLeft className="w-4 h-4" /> Prev
-                </button>
-
-                <span className="text-xs font-mono font-bold text-stone-500 px-2">
-                  {currentStep + 1} / {totalSteps}
-                </span>
-
-                <button
-                  onClick={() => {
-                    setIsPlaying(false);
-                    setCurrentStep((prev) => Math.min(totalSteps - 1, prev + 1));
-                  }}
-                  disabled={currentStep === totalSteps - 1}
-                  className="px-3 py-1.5 rounded-xl bg-cat-500 hover:bg-cat-600 disabled:opacity-40 text-white font-bold text-xs flex items-center gap-1"
-                >
-                  Next <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          </div>
+          <ul className="text-xs text-gray-600 space-y-2 mt-2 leading-relaxed">
+            <li className="flex items-start gap-1.5">
+              <span className="text-emerald-500 font-bold">✓</span>
+              <span><b>Push vs. Polling:</b> The Arduino does not need to query the server 1,000 times a minute. The server pushes the packet instantly when you click.</span>
+            </li>
+            <li className="flex items-start gap-1.5">
+              <span className="text-emerald-500 font-bold">✓</span>
+              <span><b>Tiny 2-Byte Headers:</b> HTTP headers are 800+ bytes. MQTT header is only 2 bytes! Saves Arduino RAM and Wi-Fi bandwidth.</span>
+            </li>
+            <li className="flex items-start gap-1.5">
+              <span className="text-emerald-500 font-bold">✓</span>
+              <span><b>Decoupled Architecture:</b> The phone and the Arduino never talk directly to each other; they only talk to the Broker.</span>
+            </li>
+          </ul>
         </div>
-      )}
 
-      {/* ── TAB 2: MQTT VS HTTP ────────────────────────────────────────────── */}
-      {activeTab === 'comparison' && (
-        <div className="bg-white p-6 md:p-8 rounded-2xl border border-stone-200 shadow-sm space-y-6">
-          <div>
-            <h2 className="text-xl font-bold text-stone-900">Why MQTT Over HTTP for IoT Microcontrollers</h2>
-            <p className="text-xs text-stone-500 mt-1">
-              Comparison between traditional web HTTP polling and lightweight MQTT publish-subscribe messaging.
-            </p>
+        <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-xs">
+          <div className="flex items-center gap-2 mb-2">
+            <Activity className="w-4 h-4 text-emerald-600" />
+            <h3 className="font-bold text-gray-900 text-sm">Quality of Service (QoS) Level 1</h3>
           </div>
-
-          <div className="overflow-x-auto rounded-xl border border-stone-200">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-stone-100 text-stone-700 font-bold border-b border-stone-200">
-                  <th className="p-3">Feature</th>
-                  <th className="p-3 text-rose-700 bg-rose-50/60">HTTP (Polling)</th>
-                  <th className="p-3 text-emerald-700 bg-emerald-50/60">MQTT (Pub/Sub)</th>
-                  <th className="p-3">Impact on Feeder</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-100">
-                <tr className="hover:bg-stone-50">
-                  <td className="p-3 font-semibold text-stone-900">Packet Header Size</td>
-                  <td className="p-3 text-rose-700 font-mono">500 – 1,000+ bytes</td>
-                  <td className="p-3 text-emerald-700 font-mono font-bold">2 bytes</td>
-                  <td className="p-3 text-stone-600">Saves 99% data overhead on Wi-Fi.</td>
-                </tr>
-                <tr className="hover:bg-stone-50">
-                  <td className="p-3 font-semibold text-stone-900">Communication Model</td>
-                  <td className="p-3 text-rose-700">Client-to-server request/response</td>
-                  <td className="p-3 text-emerald-700 font-bold">Publish / Subscribe via Broker</td>
-                  <td className="p-3 text-stone-600">Hardware never needs a public IP address.</td>
-                </tr>
-                <tr className="hover:bg-stone-50">
-                  <td className="p-3 font-semibold text-stone-900">Real-Time Delivery</td>
-                  <td className="p-3 text-rose-700">Periodic polling delay (e.g. 5–10s)</td>
-                  <td className="p-3 text-emerald-700 font-bold">Instant push (&lt;100ms)</td>
-                  <td className="p-3 text-stone-600">Motor actuates immediately on button click.</td>
-                </tr>
-                <tr className="hover:bg-stone-50">
-                  <td className="p-3 font-semibold text-stone-900">Connection Overhead</td>
-                  <td className="p-3 text-rose-700">New TCP/TLS handshake each request</td>
-                  <td className="p-3 text-emerald-700 font-bold">Single persistent TCP socket</td>
-                  <td className="p-3 text-stone-600">Prevents Arduino CPU and RAM exhaustion.</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-            <div className="p-5 bg-rose-50/60 rounded-xl border border-rose-200 space-y-2">
-              <span className="text-[10px] font-bold uppercase text-rose-700 bg-rose-100 px-2 py-0.5 rounded">HTTP Inefficiency</span>
-              <h3 className="font-bold text-sm text-stone-900">The "Door Knocking" Problem</h3>
-              <p className="text-xs text-stone-600 leading-relaxed">
-                With HTTP polling, the Arduino must repeatedly query the server every 2 seconds: <em>"Any food to dispense? Any food now?"</em>. Over 99% of requests are wasted, consuming battery and heating up the board.
-              </p>
-            </div>
-
-            <div className="p-5 bg-emerald-50/60 rounded-xl border border-emerald-200 space-y-2">
-              <span className="text-[10px] font-bold uppercase text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">MQTT Efficiency</span>
-              <h3 className="font-bold text-sm text-stone-900">The "Walkie-Talkie" Solution</h3>
-              <p className="text-xs text-stone-600 leading-relaxed">
-                The Arduino maintains a lightweight listening state on its topic channel. When a feed command is clicked on the web, the broker pushes the message down the socket in under 100 milliseconds.
-              </p>
-            </div>
-          </div>
+          <ul className="text-xs text-gray-600 space-y-2 mt-2 leading-relaxed">
+            <li className="flex items-start gap-1.5">
+              <span className="text-emerald-500 font-bold">✓</span>
+              <span><b>Guaranteed Delivery:</b> Commands use QoS 1 (At Least Once Delivery). The Broker requires a <code>PUBACK</code> confirmation.</span>
+            </li>
+            <li className="flex items-start gap-1.5">
+              <span className="text-emerald-500 font-bold">✓</span>
+              <span><b>Auto-Retry on Wi-Fi Blips:</b> If a packet drops over home Wi-Fi, the MQTT client automatically resends until received.</span>
+            </li>
+            <li className="flex items-start gap-1.5">
+              <span className="text-emerald-500 font-bold">✓</span>
+              <span><b>Duplicate Guard:</b> The Arduino firmware deduplicates commands using unique <code>requestId</code> values so your cat is never overfed.</span>
+            </li>
+          </ul>
         </div>
-      )}
-
-      {/* ── TAB 3: THE 4 ROLES ────────────────────────────────────────────── */}
-      {activeTab === 'roles' && (
-        <div className="bg-white p-6 md:p-8 rounded-2xl border border-stone-200 shadow-sm space-y-6">
-          <div>
-            <h2 className="text-xl font-bold text-stone-900">The 4 Core Roles in MQTT Architecture</h2>
-            <p className="text-xs text-stone-500 mt-1">
-              MQTT completely decouples the sender and receiver through four components:
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="p-5 bg-stone-50 rounded-xl border border-stone-200 space-y-2">
-              <div className="p-2.5 bg-cat-500 text-white rounded-xl w-fit">
-                <Send className="w-5 h-5" />
-              </div>
-              <h3 className="font-bold text-sm text-stone-900">1. Publisher</h3>
-              <p className="text-xs text-stone-600 leading-relaxed">
-                Sends the message. In our project, the Express backend publishes feed instructions.
-              </p>
-            </div>
-
-            <div className="p-5 bg-stone-50 rounded-xl border border-stone-200 space-y-2">
-              <div className="p-2.5 bg-amber-500 text-white rounded-xl w-fit">
-                <Server className="w-5 h-5" />
-              </div>
-              <h3 className="font-bold text-sm text-stone-900">2. Broker</h3>
-              <p className="text-xs text-stone-600 leading-relaxed">
-                The central cloud switchboard (EMQX / HiveMQ). It manages routing and delivers packets to all subscribers.
-              </p>
-            </div>
-
-            <div className="p-5 bg-stone-50 rounded-xl border border-stone-200 space-y-2">
-              <div className="p-2.5 bg-emerald-600 text-white rounded-xl w-fit">
-                <Radio className="w-5 h-5" />
-              </div>
-              <h3 className="font-bold text-sm text-stone-900">3. Topic</h3>
-              <p className="text-xs text-stone-600 leading-relaxed">
-                The message channel (e.g. <code className="font-mono text-[11px] bg-white px-1 py-0.5 rounded border">smartcat/geo123/device/command</code>) identifying the action.
-              </p>
-            </div>
-
-            <div className="p-5 bg-stone-50 rounded-xl border border-stone-200 space-y-2">
-              <div className="p-2.5 bg-cyan-600 text-white rounded-xl w-fit">
-                <Download className="w-5 h-5" />
-              </div>
-              <h3 className="font-bold text-sm text-stone-900">4. Subscriber</h3>
-              <p className="text-xs text-stone-600 leading-relaxed">
-                The listener. Arduino UNO R4 subscribes on startup and actuates the motor when a packet arrives.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── TAB 4: QOS LEVELS ─────────────────────────────────────────────── */}
-      {activeTab === 'qos' && (
-        <div className="bg-white p-6 md:p-8 rounded-2xl border border-stone-200 shadow-sm space-y-6">
-          <div>
-            <h2 className="text-xl font-bold text-stone-900">Quality of Service (QoS) Guarantees</h2>
-            <p className="text-xs text-stone-500 mt-1">
-              MQTT defines three delivery guarantee levels for different IoT requirements:
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-5 bg-stone-50 rounded-xl border border-stone-200 space-y-2">
-              <span className="font-mono text-xs font-bold bg-stone-200 text-stone-800 px-2 py-0.5 rounded">QoS 0</span>
-              <h3 className="font-bold text-sm text-stone-900">At Most Once ("Fire & Forget")</h3>
-              <p className="text-xs text-stone-600 leading-relaxed">
-                Sent without acknowledgment. If a Wi-Fi packet drops, it is not re-transmitted.
-              </p>
-              <p className="text-[11px] text-stone-500 font-medium pt-1 border-t border-stone-200">
-                Used in SmartCat for: <strong>Heartbeat telemetry</strong>.
-              </p>
-            </div>
-
-            <div className="p-5 bg-emerald-50/70 rounded-xl border-2 border-emerald-300 space-y-2">
-              <span className="font-mono text-xs font-bold bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded">QoS 1 (Recommended)</span>
-              <h3 className="font-bold text-sm text-emerald-950">At Least Once (PUBACK Guaranteed)</h3>
-              <p className="text-xs text-emerald-900 leading-relaxed">
-                The sender holds the message until the recipient returns a <code className="font-mono bg-white px-1 rounded border">PUBACK</code> acknowledgment packet.
-              </p>
-              <p className="text-[11px] text-emerald-800 font-semibold pt-1 border-t border-emerald-200">
-                Used in SmartCat for: <strong>Feed commands</strong> so your pet is guaranteed to be fed!
-              </p>
-            </div>
-
-            <div className="p-5 bg-stone-50 rounded-xl border border-stone-200 space-y-2">
-              <span className="font-mono text-xs font-bold bg-stone-200 text-stone-800 px-2 py-0.5 rounded">QoS 2</span>
-              <h3 className="font-bold text-sm text-stone-900">Exactly Once (4-Way Handshake)</h3>
-              <p className="text-xs text-stone-600 leading-relaxed">
-                Guarantees zero duplicates using a 4-message handshake (<code className="font-mono text-[10px]">PUB -&gt; PUBREC -&gt; PUBREL -&gt; PUBCOMP</code>). High overhead.
-              </p>
-              <p className="text-[11px] text-stone-500 font-medium pt-1 border-t border-stone-200">
-                Used for: Banking & high-precision medical devices.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── TAB 5: HARDWARE & SERVO WIRING ────────────────────────────────── */}
-      {activeTab === 'hardware' && (
-        <div className="bg-white p-6 md:p-8 rounded-2xl border border-stone-200 shadow-sm space-y-6">
-          <div>
-            <h2 className="text-xl font-bold text-stone-900">Arduino UNO R4 WiFi & SG90 Servo Actuation</h2>
-            <p className="text-xs text-stone-500 mt-1">
-              Physical wiring specifications and PWM control signal timings:
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-5 bg-stone-50 rounded-xl border border-stone-200 space-y-2">
-              <div className="p-2 bg-blue-100 text-blue-800 rounded-lg w-fit">
-                <Cpu className="w-5 h-5" />
-              </div>
-              <h3 className="font-bold text-sm text-stone-900">Arduino UNO R4 WiFi</h3>
-              <p className="text-xs text-stone-600 leading-relaxed">
-                Powered by a 32-bit Renesas RA4M1 ARM Cortex-M4 chip with built-in Wi-Fi and 12x8 LED status matrix.
-              </p>
-            </div>
-
-            <div className="p-5 bg-stone-50 rounded-xl border border-stone-200 space-y-2">
-              <div className="p-2 bg-cat-100 text-cat-700 rounded-lg w-fit">
-                <Zap className="w-5 h-5" />
-              </div>
-              <h3 className="font-bold text-sm text-stone-900">50Hz PWM Signal (Pin D9)</h3>
-              <p className="text-xs text-stone-600 leading-relaxed">
-                Pin D9 outputs standard 50Hz pulses (20ms cycle). <br />
-                • <strong>0° (Closed):</strong> 544µs pulse <br />
-                • <strong>90° (Open):</strong> 1500µs pulse
-              </p>
-            </div>
-
-            <div className="p-5 bg-stone-50 rounded-xl border border-stone-200 space-y-2">
-              <div className="p-2 bg-emerald-100 text-emerald-800 rounded-lg w-fit">
-                <CheckCircle2 className="w-5 h-5" />
-              </div>
-              <h3 className="font-bold text-sm text-stone-900">Shared Common Ground</h3>
-              <p className="text-xs text-stone-600 leading-relaxed">
-                Essential electrical rule: If using an external 5V battery, its negative (-) ground must connect to Arduino GND so the PWM signal has a return path.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }

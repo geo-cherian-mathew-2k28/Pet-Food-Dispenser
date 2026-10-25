@@ -25,6 +25,7 @@
  */
 
 #include <WiFiS3.h>
+#define MQTT_MAX_PACKET_SIZE 512
 #include <PubSubClient.h>
 #include <Servo.h>
 #include <ArduinoJson.h>
@@ -366,8 +367,9 @@ void setup() {
   Serial.print(F("Command topic : ")); Serial.println(TOPIC_COMMAND);
   Serial.setTimeout(50);
 
-  // Configure MQTT with faster keepalive
+  // Configure MQTT with faster keepalive and expanded 512-byte buffer
   mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
+  mqttClient.setBufferSize(512);
   mqttClient.setCallback(onMqttMessage);
   mqttClient.setKeepAlive(15);     // 15s keepalive → server detects drops faster
   mqttClient.setSocketTimeout(8);  // 8s socket timeout

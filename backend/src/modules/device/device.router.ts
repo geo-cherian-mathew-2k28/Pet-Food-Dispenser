@@ -6,7 +6,13 @@ import { prisma } from '../../config/prisma';
 import { env } from '../../config/env';
 import { authenticate } from '../../middleware/auth.middleware';
 import { getMqttConnectionStatus, releaseDispensingLock, getIsDispensing } from '../mqtt/mqtt.service';
-import { getDeviceStatusRecord, updateDeviceStatusRecord, getFeedCooldownSeconds, setFeedCooldownSeconds } from './device.service';
+import { 
+  getDeviceStatusRecord, 
+  updateDeviceStatusRecord, 
+  getFeedCooldownSeconds, 
+  setFeedCooldownSeconds,
+  getCooldownRemainingSeconds
+} from './device.service';
 
 export const deviceRouter = Router();
 
@@ -26,6 +32,7 @@ deviceRouter.get('/status', async (req: Request, res: Response, next: NextFuncti
       },
       mqttConnected: getMqttConnectionStatus(),
       isDispensing: getIsDispensing(),
+      cooldownRemainingSeconds: getCooldownRemainingSeconds(),
     });
   } catch (err) {
     next(err);

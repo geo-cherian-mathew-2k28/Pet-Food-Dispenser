@@ -13,7 +13,12 @@ import { isLockStale, clearLockTimestamp } from '../../utils/dispensingLock';
 import { generateRequestId } from '../../utils/requestId';
 import { logger } from '../../utils/logger';
 
-import { getDeviceStatusRecord, getFeedCooldownSeconds } from '../device/device.service';
+import { 
+  getDeviceStatusRecord, 
+  getFeedCooldownSeconds, 
+  getCooldownRemainingSeconds, 
+  recordFeedCompleted 
+} from '../device/device.service';
 
 export type FeedSource = 'WEB' | 'TELEGRAM' | 'SCHEDULE';
 
@@ -70,24 +75,36 @@ export async function triggerFeed(req: FeedRequest): Promise<FeedResult> {
     };
   }
 
-  // ── 1. Clean up stale PENDING feeds in the DB ─────────────────────────────
+  // ── 1. Clean up stale PENDING feeds asynchronously (non-blocking) ─────────
   const staleThreshold = new Date(Date.now() - 60_000);
-  await prisma.feedLog.updateMany({
+  prisma.feedLog.updateMany({
     where: { status: 'PENDING', createdAt: { lt: staleThreshold } },
     data: { status: 'FAILED', message: 'Timed out — no response from device', completedAt: new Date() },
-  });
+  }).catch((err) => logger.warn(`Background stale feed cleanup notice: ${err}`));
 
-  // ── 2. Check daily feed limit ──────────────────────────────────────────────
+  // ── 2. Check Cooldown Instantly (in-memory, 0ms latency) ──────────────────
+  const cooldownRemaining = getCooldownRemainingSeconds();
+  if (cooldownRemaining > 0) {
+    logger.warn(`Feed rejected: cooldown active, ${cooldownRemaining}s remaining`);
+    return {
+      success: false,
+      message: `Feeder is cooling down. Please wait ${cooldownRemaining} seconds.`,
+      requestId,
+    };
+  }
+
+  // ── 3. Check daily feed limit in parallel with device settings ─────────────
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
-  const device = await getDeviceStatusRecord();
+  const [device, todayFeedCount] = await Promise.all([
+    getDeviceStatusRecord(),
+    prisma.feedLog.count({
+      where: { createdAt: { gte: todayStart }, status: 'SUCCESS' },
+    }),
+  ]);
+
   const maxFeeds = device?.maxFeedsPerDay ?? env.maxFeedsPerDay;
-
-  const todayFeedCount = await prisma.feedLog.count({
-    where: { createdAt: { gte: todayStart }, status: 'SUCCESS' },
-  });
-
   if (todayFeedCount >= maxFeeds) {
     logger.warn(`Feed rejected: daily limit of ${maxFeeds} reached (${todayFeedCount} today)`);
     return {
@@ -95,28 +112,6 @@ export async function triggerFeed(req: FeedRequest): Promise<FeedResult> {
       message: `Daily feed limit of ${maxFeeds} reached. Try again tomorrow.`,
       requestId,
     };
-  }
-
-  // ── 3. Check cooldown ──────────────────────────────────────────────────────
-  const cooldownPeriod = getFeedCooldownSeconds();
-  if (cooldownPeriod > 0) {
-    const lastSuccessfulFeed = await prisma.feedLog.findFirst({
-      where: { status: 'SUCCESS' },
-      orderBy: { completedAt: 'desc' },
-    });
-
-    if (lastSuccessfulFeed?.completedAt) {
-      const elapsedSeconds = (Date.now() - lastSuccessfulFeed.completedAt.getTime()) / 1000;
-      if (elapsedSeconds < cooldownPeriod) {
-        const waitSeconds = Math.ceil(cooldownPeriod - elapsedSeconds);
-        logger.warn(`Feed rejected: cooldown active, ${waitSeconds}s remaining`);
-        return {
-          success: false,
-          message: `Feeder is cooling down. Please wait ${waitSeconds} seconds.`,
-          requestId,
-        };
-      }
-    }
   }
 
   // ── 4. Create PENDING feed log ─────────────────────────────────────────────
@@ -141,6 +136,10 @@ export async function triggerFeed(req: FeedRequest): Promise<FeedResult> {
       userName,
       portion,
     });
+
+    if (response.status === 'success') {
+      recordFeedCompleted(new Date());
+    }
 
     return {
       success: response.status === 'success',

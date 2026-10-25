@@ -11,6 +11,21 @@ import { logger } from '../../utils/logger';
 const SETTINGS_FILE = path.join(__dirname, '../../../data/device_settings.json');
 
 let inMemoryCooldownSeconds: number = env.feedCooldownSeconds;
+let lastFeedCompletedAt: Date | null = null;
+let cachedDevice: any = null;
+let cachedDeviceTime = 0;
+const CACHE_TTL_MS = 2500; // 2.5 seconds cache for fast polling
+
+export function recordFeedCompleted(date = new Date()): void {
+  lastFeedCompletedAt = date;
+}
+
+export function getCooldownRemainingSeconds(): number {
+  if (inMemoryCooldownSeconds <= 0) return 0;
+  if (!lastFeedCompletedAt) return 0;
+  const elapsed = (Date.now() - lastFeedCompletedAt.getTime()) / 1000;
+  return Math.max(0, Math.ceil(inMemoryCooldownSeconds - elapsed));
+}
 
 function loadRuntimeSettings(): void {
   try {
@@ -46,12 +61,18 @@ export function setFeedCooldownSeconds(val: number): number {
 }
 
 export async function getDeviceStatusRecord() {
+  if (cachedDevice && Date.now() - cachedDeviceTime < CACHE_TTL_MS) {
+    return cachedDevice;
+  }
+
   // 1. Try to find existing device-1 record
   let device = await prisma.deviceStatus.findUnique({
     where: { id: 'device-1' },
   });
 
   if (device) {
+    cachedDevice = device;
+    cachedDeviceTime = Date.now();
     return device;
   }
 
@@ -79,11 +100,13 @@ export async function getDeviceStatusRecord() {
       where: { id: { not: 'device-1' } },
     }).catch(() => {});
 
+    cachedDevice = device;
+    cachedDeviceTime = Date.now();
     return device;
   }
 
   // 3. Create initial device-1 record if table is completely empty
-  return prisma.deviceStatus.create({
+  const created = await prisma.deviceStatus.create({
     data: {
       id: 'device-1',
       status: 'OFFLINE',
@@ -92,13 +115,19 @@ export async function getDeviceStatusRecord() {
       showArchitectureToUsers: true,
     },
   });
+  cachedDevice = created;
+  cachedDeviceTime = Date.now();
+  return created;
 }
 
 export async function updateDeviceStatusRecord(updateData: Record<string, any>) {
   const device = await getDeviceStatusRecord();
-  return prisma.deviceStatus.update({
+  const updated = await prisma.deviceStatus.update({
     where: { id: device.id },
     data: updateData,
   });
+  cachedDevice = updated;
+  cachedDeviceTime = Date.now();
+  return updated;
 }
 

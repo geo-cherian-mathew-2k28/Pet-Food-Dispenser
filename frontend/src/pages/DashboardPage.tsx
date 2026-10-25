@@ -80,6 +80,7 @@ export default function DashboardPage() {
   });
 
   const [feeding, setFeeding]   = useState(false);
+  const [isServerDispensing, setIsServerDispensing] = useState(false);
   const [feedResult, setFeedResult] = useState<{ success: boolean; message: string } | null>(null);
   // If we already have cached stats in this session, render instantly without full-screen loading spinner
   const [loading, setLoading]   = useState(() => {
@@ -88,6 +89,19 @@ export default function DashboardPage() {
     } catch { return true; }
   });
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
+
+  const pollStatus = useCallback(async () => {
+    try {
+      const res = await api.get('/device/status');
+      if (res.data) {
+        setDevice(res.data.device);
+        setIsServerDispensing(Boolean(res.data.isDispensing));
+        if (typeof res.data.cooldownRemainingSeconds === 'number') {
+          setCooldownRemaining(res.data.cooldownRemainingSeconds);
+        }
+      }
+    } catch {}
+  }, []);
 
   const fetchData = useCallback(async () => {
     try {
@@ -98,6 +112,10 @@ export default function DashboardPage() {
         api.get('/schedules'),
       ]);
       setDevice(deviceRes.data.device);
+      setIsServerDispensing(Boolean(deviceRes.data.isDispensing));
+      if (typeof deviceRes.data.cooldownRemainingSeconds === 'number') {
+        setCooldownRemaining(deviceRes.data.cooldownRemainingSeconds);
+      }
       setStats(statsRes.data);
       setRecentFeeds(feedsRes.data.feeds);
       const activeScheds = schedRes.data.schedules.filter((s: { enabled: boolean }) => s.enabled).length;
@@ -118,10 +136,15 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchData();
-    // Refresh device status every 30s
-    const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
+    // Fast poll device status every 2.5s for real-time button locking across all users
+    const pollTimer = setInterval(pollStatus, 2500);
+    // Refresh stats every 20s
+    const statsTimer = setInterval(fetchData, 20000);
+    return () => {
+      clearInterval(pollTimer);
+      clearInterval(statsTimer);
+    };
+  }, [fetchData, pollStatus]);
 
   useEffect(() => {
     const updateCooldown = () => {
@@ -152,6 +175,7 @@ export default function DashboardPage() {
     try {
       const res = await api.post('/feeds/now', { portion: 1 });
       setFeedResult({ success: res.data.success, message: res.data.message });
+      await pollStatus();
     } catch (err: unknown) {
       const message =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
@@ -223,15 +247,15 @@ export default function DashboardPage() {
           <button
             id="feed-now-btn"
             onClick={handleFeedNow}
-            disabled={feeding || cooldownRemaining > 0}
+            disabled={feeding || isServerDispensing || cooldownRemaining > 0}
             className={`feed-btn flex items-center justify-center gap-2 shadow-sm transition-all ${
-              cooldownRemaining > 0 ? 'bg-gray-200 hover:bg-gray-200 text-gray-500 cursor-not-allowed opacity-80' : ''
+              feeding || isServerDispensing || cooldownRemaining > 0 ? 'bg-gray-200 hover:bg-gray-200 text-gray-500 cursor-not-allowed opacity-80' : ''
             }`}
           >
-            {feeding ? (
+            {feeding || isServerDispensing ? (
               <>
-                <Loader2 className="w-5 h-5 animate-spin text-white" />
-                <span>Dispensing Food...</span>
+                <Loader2 className="w-5 h-5 animate-spin text-cat-600" />
+                <span>{feeding ? 'Dispensing Food...' : 'Feeder Busy (Dispensing...)'}</span>
               </>
             ) : cooldownRemaining > 0 ? (
               <>

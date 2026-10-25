@@ -6,7 +6,7 @@ import { env } from '../../config/env';
 import { logger } from '../../utils/logger';
 import { prisma } from '../../config/prisma';
 import { recordLockAcquired, clearLockTimestamp } from '../../utils/dispensingLock';
-import { getDeviceStatusRecord, updateDeviceStatusRecord } from '../device/device.service';
+import { getDeviceStatusRecord, updateDeviceStatusRecord, recordFeedCompleted } from '../device/device.service';
 
 // ─── MQTT Topic Constants ─────────────────────────────────────────────────────
 export const TOPICS = {
@@ -180,6 +180,10 @@ async function handleDeviceResponse(data: DeviceResponse): Promise<void> {
     logger.info(`Dispensing lock released for [${requestId}]`);
   }
 
+  if (status === 'success') {
+    recordFeedCompleted(new Date());
+  }
+
   // Update feed log with the response
   try {
     const result = await prisma.feedLog.updateMany({
@@ -278,9 +282,9 @@ export async function publishFeedCommandAndWait(
   timeoutMs = 20000
 ): Promise<DeviceResponse> {
   const device = await getDeviceStatusRecord();
-  // Allow plenty of buffer for physical servo movement + network transit (minimum 18s)
+  // Allow plenty of buffer for physical servo movement + network transit (14s)
   const duration = device?.servoOpenDurationMs ?? 1500;
-  const customTimeoutMs = Math.max(18000, duration * payload.portion + 12000);
+  const customTimeoutMs = Math.max(14000, duration * payload.portion + 8000);
 
   return new Promise(async (resolve, reject) => {
     const published = await publishFeedCommand(payload);
