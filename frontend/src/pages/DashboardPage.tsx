@@ -95,13 +95,15 @@ export default function DashboardPage() {
       const res = await api.get('/device/status');
       if (res.data) {
         setDevice(res.data.device);
-        setIsServerDispensing(Boolean(res.data.isDispensing));
+        if (!feeding) {
+          setIsServerDispensing(Boolean(res.data.isDispensing));
+        }
         if (typeof res.data.cooldownRemainingSeconds === 'number') {
           setCooldownRemaining(res.data.cooldownRemainingSeconds);
         }
       }
     } catch {}
-  }, []);
+  }, [feeding]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -175,6 +177,7 @@ export default function DashboardPage() {
     try {
       const res = await api.post('/feeds/now', { portion: 1 });
       setFeedResult({ success: res.data.success, message: res.data.message });
+      setIsServerDispensing(false);
       await pollStatus();
     } catch (err: unknown) {
       const message =
@@ -183,6 +186,7 @@ export default function DashboardPage() {
       setFeedResult({ success: false, message });
     } finally {
       setFeeding(false);
+      setIsServerDispensing(false);
       await fetchData();
     }
   };
@@ -252,10 +256,15 @@ export default function DashboardPage() {
               feeding || isServerDispensing || cooldownRemaining > 0 ? 'bg-gray-200 hover:bg-gray-200 text-gray-500 cursor-not-allowed opacity-80' : ''
             }`}
           >
-            {feeding || isServerDispensing ? (
+            {feeding ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin text-cat-600" />
-                <span>{feeding ? 'Dispensing Food...' : 'Feeder Busy (Dispensing...)'}</span>
+                <span>Dispensing Food...</span>
+              </>
+            ) : isServerDispensing ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin text-amber-600" />
+                <span>Feeder Busy (Dispensing...)</span>
               </>
             ) : cooldownRemaining > 0 ? (
               <>
@@ -272,14 +281,22 @@ export default function DashboardPage() {
 
           {feedResult && (
             <div
-              className={`p-3.5 rounded-xl text-sm font-medium animate-fade-in flex items-center gap-2.5 ${
+              className={`p-3.5 rounded-xl text-sm font-medium animate-fade-in flex flex-col gap-1 ${
                 feedResult.success
                   ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                   : 'bg-rose-50 text-rose-800 border border-rose-200'
               }`}
             >
-              {feedResult.success ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" /> : <XCircle className="w-4 h-4 shrink-0 text-rose-600" />}
-              <span>{feedResult.message}</span>
+              <div className="flex items-center gap-2">
+                {feedResult.success ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" /> : <XCircle className="w-4 h-4 shrink-0 text-rose-600" />}
+                <span className="font-semibold">{feedResult.message}</span>
+              </div>
+              {feedResult.success && (
+                <div className="flex items-center gap-1.5 text-xs text-emerald-700 mt-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Broker PUBACK Confirmed • End-to-End verified</span>
+                </div>
+              )}
             </div>
           )}
 

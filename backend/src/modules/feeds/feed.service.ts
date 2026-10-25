@@ -137,6 +137,8 @@ export async function triggerFeed(req: FeedRequest): Promise<FeedResult> {
       portion,
     });
 
+    releaseDispensingLock();
+
     if (response.status === 'success') {
       recordFeedCompleted(new Date());
     }
@@ -148,6 +150,7 @@ export async function triggerFeed(req: FeedRequest): Promise<FeedResult> {
       feedLogId: feedLog.id,
     };
   } catch (err) {
+    releaseDispensingLock();
     // Timeout or publish error — mark log as FAILED
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
 

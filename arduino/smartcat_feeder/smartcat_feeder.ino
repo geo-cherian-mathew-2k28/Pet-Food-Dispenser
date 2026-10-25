@@ -230,6 +230,7 @@ void blinkFrame(uint8_t frame[8][12], int times, int delayMs) {
 
 String TOPIC_COMMAND;
 String TOPIC_RESPONSE;
+String TOPIC_ACK;
 String TOPIC_HEARTBEAT;
 String TOPIC_ERROR;
 String TOPIC_STATUS;
@@ -289,6 +290,7 @@ void setup() {
   String prefix = String("smartcat/") + MQTT_TOPIC_NAMESPACE + "/device/";
   TOPIC_COMMAND   = prefix + "command";
   TOPIC_RESPONSE  = prefix + "response";
+  TOPIC_ACK       = prefix + "ack";
   TOPIC_HEARTBEAT = prefix + "heartbeat";
   TOPIC_ERROR     = prefix + "error";
   TOPIC_STATUS    = prefix + "status";
@@ -495,6 +497,19 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
   }
 }
 
+void publishAck(const String& requestId, const String& message) {
+  if (!mqttClient.connected()) return;
+  StaticJsonDocument<192> doc;
+  doc["requestId"] = requestId;
+  doc["status"]    = "ack";
+  doc["message"]   = message;
+  doc["createdAt"] = getIsoTimestamp();
+  String out;
+  serializeJson(doc, out);
+  mqttClient.publish(TOPIC_ACK.c_str(), out.c_str(), false);
+  Serial.print(F("[MQTT] TX ACK: ")); Serial.println(out);
+}
+
 void handleCommand(const String& payload) {
   StaticJsonDocument<512> doc;
   if (deserializeJson(doc, payload)) {
@@ -538,6 +553,7 @@ void handleCommand(const String& payload) {
 
   if (String(command) == "feed") {
     Serial.println(F("[CMD] Feed command received"));
+    publishAck(String(requestId), "Command received by Feeder");
     dispenseFood(String(requestId), portion, durationMs);
   } else {
     Serial.print(F("[CMD] Unknown command: ")); Serial.println(command);
