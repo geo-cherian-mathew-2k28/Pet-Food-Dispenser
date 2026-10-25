@@ -32,10 +32,10 @@ export const env = {
 
   // MQTT
   mqtt: {
-    host: required('MQTT_BROKER_HOST'),
-    port: parseInt(optional('MQTT_BROKER_PORT', '1883'), 10),
-    username: optional('MQTT_USERNAME', ''),
-    password: optional('MQTT_PASSWORD', ''),
+    host: process.env.MQTT_BROKER_HOST || process.env.MQTT_BROKER_URL || '1929ae9bc33d4ba29b4aa4f909c3ef85.s1.eu.hivemq.cloud',
+    port: parseInt(optional('MQTT_BROKER_PORT', '8883'), 10),
+    username: optional('MQTT_USERNAME', 'geo123'),
+    password: optional('MQTT_PASSWORD', 'GeoCatFeeder2026'),
     clientId: optional('MQTT_CLIENT_ID', 'smartcat-backend'),
     namespace: optional('MQTT_TOPIC_NAMESPACE', 'geo123'),
   },

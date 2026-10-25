@@ -32,14 +32,13 @@ char WIFI_SSID[]     = "YOUR_WIFI_SSID";
 char WIFI_PASSWORD[] = "YOUR_WIFI_PASSWORD";
 
 // ── MQTT ──────────────────────────────────────────────────────────────────────
-// Using HiveMQ public broker (no auth, no TLS) — reliable for Arduino UNO R4
-#define USE_TLS false
+#define USE_TLS true
 
 #if USE_TLS
-  const char MQTT_BROKER[]   = "YOUR_HIVEMQ_CLOUD_HOST.s1.eu.hivemq.cloud";
+  const char MQTT_BROKER[]   = "1929ae9bc33d4ba29b4aa4f909c3ef85.s1.eu.hivemq.cloud";
   const int  MQTT_PORT       = 8883;
-  const char MQTT_USERNAME[] = "your-username";
-  const char MQTT_PASSWORD[] = "your-password";
+  const char MQTT_USERNAME[] = "geo123";
+  const char MQTT_PASSWORD[] = "GeoCatFeeder2026";
 #else
   const char MQTT_BROKER[]   = "broker.hivemq.com";
   const int  MQTT_PORT       = 1883;
@@ -418,15 +417,9 @@ void connectWiFi() {
     delay(1000);
 
     #if USE_TLS
-      Serial.print(F("[NTP] Syncing time..."));
       unsigned long t0 = millis();
-      while (WiFi.getTime() < 1700000000UL && millis() - t0 < 15000) {
-        delay(1000); Serial.print('.');
-      }
-      if (WiFi.getTime() >= 1700000000UL) {
-        Serial.println(F("\n[NTP] Synchronized"));
-      } else {
-        Serial.println(F("\n[NTP] Timeout — TLS may fail"));
+      while (WiFi.getTime() < 1700000000UL && millis() - t0 < 2000) {
+        delay(250);
       }
     #endif
 
@@ -444,10 +437,6 @@ void connectMQTT() {
   Serial.print(F("[MQTT] Connecting to "));
   Serial.print(MQTT_BROKER); Serial.print(':'); Serial.println(MQTT_PORT);
   showFrame(FRAME_MQTT_DOTS);
-
-  #if USE_TLS
-    wifiClient.setCACert(nullptr);
-  #endif
 
   char currentClientId[44];
   randomSeed(analogRead(A0) ^ millis());

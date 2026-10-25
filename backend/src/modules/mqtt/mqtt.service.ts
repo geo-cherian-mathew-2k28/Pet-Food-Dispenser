@@ -40,22 +40,43 @@ export interface DeviceResponse {
 
 // ─── Connect ─────────────────────────────────────────────────────────────────
 export function connectMqtt(): void {
-  // If host is broker.hivemq.com (public broker), force port 1883 and tcp protocol
-  const isHiveMqPublic = env.mqtt.host === 'broker.hivemq.com';
-  const port = isHiveMqPublic ? 1883 : env.mqtt.port;
-  const protocol = port === 8883 ? 'mqtts' : 'mqtt';
+  // Normalize host: strip any leading protocol (mqtts://, mqtt://) and trailing port/paths
+  let rawHost = (env.mqtt.host || '').trim();
+  let protocol: 'mqtt' | 'mqtts' = 'mqtt';
+  let port = env.mqtt.port;
 
-  logger.info(`Connecting to MQTT broker: ${env.mqtt.host}:${port} (${protocol})`);
+  if (rawHost.startsWith('mqtts://')) {
+    protocol = 'mqtts';
+    rawHost = rawHost.replace('mqtts://', '');
+  } else if (rawHost.startsWith('mqtt://')) {
+    protocol = 'mqtt';
+    rawHost = rawHost.replace('mqtt://', '');
+  }
+
+  rawHost = rawHost.replace(/\/.*$/, '');
+  if (rawHost.includes(':')) {
+    const parts = rawHost.split(':');
+    rawHost = parts[0];
+    port = parseInt(parts[1], 10);
+  }
+
+  // Automatically enforce TLS and port 8883 for HiveMQ Cloud clusters
+  if (rawHost.includes('hivemq.cloud')) {
+    protocol = 'mqtts';
+    if (!port || port === 1883) port = 8883;
+  }
+
+  logger.info(`Connecting to MQTT broker: ${rawHost}:${port} (${protocol})`);
 
   client = mqtt.connect({
-    host: env.mqtt.host,
+    host: rawHost,
     port,
     protocol,
-    ...(isHiveMqPublic ? {} : (env.mqtt.username ? { username: env.mqtt.username, password: env.mqtt.password } : {})),
+    ...(env.mqtt.username ? { username: env.mqtt.username, password: env.mqtt.password } : {}),
     clientId: `${env.mqtt.clientId}-${Math.random().toString(36).substring(2, 8)}`,
-    reconnectPeriod: 2000,    // faster reconnect (2s)
-    connectTimeout: 5000,     // faster timeout (5s)
-    keepalive: 15,            // 15s keepalive to detect stale connections faster
+    reconnectPeriod: 3000,
+    connectTimeout: 8000,
+    keepalive: 20,
     clean: true,
   });
 
