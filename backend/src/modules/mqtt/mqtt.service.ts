@@ -291,8 +291,8 @@ export async function publishFeedCommand(payload: {
 /**
  * Publish feed command and wait for device response or real-time ACK.
  * - Sub-second resolution when Arduino transmits TOPICS.ACK
- * - Fails fast in 4 seconds if device is offline (never hangs for 20 seconds)
- * - Releases dispensing lock immediately
+ * - Accommodates full physical servo sweep (2.5s) with a safe 9s timeout
+ * - Releases dispensing lock immediately upon completion
  */
 export async function publishFeedCommandAndWait(
   payload: {
@@ -302,9 +302,9 @@ export async function publishFeedCommandAndWait(
     userName: string;
     portion: number;
   },
-  timeoutMs = 4000
+  timeoutMs = 9000
 ): Promise<DeviceResponse> {
-  const customTimeoutMs = 4000; // Strict 4-second maximum timeout
+  const customTimeoutMs = 9000; // 9 seconds: safe buffer for physical servo cycle + network transit
 
   return new Promise(async (resolve, reject) => {
     const published = await publishFeedCommand(payload);
@@ -315,12 +315,12 @@ export async function publishFeedCommandAndWait(
       return;
     }
 
-    // Set 4s timeout if device doesn't respond in time
+    // Set 9s timeout if device doesn't respond in time
     const timer = setTimeout(() => {
       pendingResponses.delete(payload.requestId);
       releaseDispensingLock();
-      logger.warn(`Device response timeout after 4s for [${payload.requestId}]`);
-      reject(new Error('Feeder did not acknowledge in 4s. Please verify Arduino is powered and online.'));
+      logger.warn(`Device response timeout after 9s for [${payload.requestId}]`);
+      reject(new Error('Feeder did not acknowledge in 9s. Please verify Arduino is powered and online.'));
     }, customTimeoutMs);
 
     pendingResponses.set(payload.requestId, (result) => {

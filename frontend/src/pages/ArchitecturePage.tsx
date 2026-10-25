@@ -1,44 +1,63 @@
-// SmartCat Feeder - Visual MQTT Architecture & Multi-Subscriber Flow Simulator
-// 100% Light Theme, Graphical Node-and-Line Flow, Interactive Moving Data Packets,
-// Demonstrates Topic-Based Routing & Delivery ONLY to Subscribed Devices.
+// SmartCat Feeder - Interactive MQTT Topic-Routing & Packet Flow Simulator
+// 100% Light Theme, Smooth Glowing Particle Dot, Multi-Subscriber Matching,
+// Error ACK for Unsubscribed Topics (Educational CN Demonstration).
 
 import { useState, useEffect, useRef } from 'react';
 import {
-  Radio,
   Play,
   Pause,
   RotateCcw,
-  Activity
+  Sparkles,
+  Activity,
+  CheckCircle2,
+  XCircle
 } from 'lucide-react';
 
-type TopicPreset = 'feed' | 'status' | 'other_user';
+interface SubscriberDef {
+  id: string;
+  name: string;
+  deviceType: string;
+  topic: string;
+  accentColor: string;
+}
+
+const SUBSCRIBERS: SubscriberDef[] = [
+  {
+    id: 'feeder',
+    name: 'Arduino Cat Feeder (UNO R4)',
+    deviceType: 'Hardware Actuator',
+    topic: 'smartcat/geo123/device/command',
+    accentColor: '#10b981', // green
+  },
+  {
+    id: 'mobile',
+    name: 'Owner Mobile App',
+    deviceType: 'Client Monitor',
+    topic: 'smartcat/geo123/device/status',
+    accentColor: '#3b82f6', // blue
+  },
+  {
+    id: 'other_user',
+    name: 'Other Feeder (User 999)',
+    deviceType: 'Isolated Hardware',
+    topic: 'smartcat/user999/device/command',
+    accentColor: '#8b5cf6', // purple
+  },
+];
 
 export default function ArchitecturePage() {
-  const [selectedTopic, setSelectedTopic] = useState<TopicPreset>('feed');
+  // Topic string to publish
+  const [topicInput, setTopicInput] = useState<string>('smartcat/geo123/device/command');
+  const [speedMultiplier, setSpeedMultiplier] = useState<number>(1.0); // 0.6x (slow), 1.0x (normal), 1.5x (fast)
   const [animProgress, setAnimProgress] = useState<number>(0); // 0 to 100
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [autoLoop, setAutoLoop] = useState<boolean>(false);
   const animFrameRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
 
-  // Active topic string based on selection
-  const currentPublishedTopic =
-    selectedTopic === 'feed'
-      ? 'smartcat/geo123/device/command'
-      : selectedTopic === 'status'
-      ? 'smartcat/geo123/device/status'
-      : 'smartcat/user999/device/command';
-
-  const currentPayloadSummary =
-    selectedTopic === 'feed'
-      ? '{"cmd": "feed", "portion": 1}'
-      : selectedTopic === 'status'
-      ? '{"status": "online", "rssi": -45}'
-      : '{"cmd": "feed", "user": "user999"}';
-
-  // Determine which subscriber matches this topic
-  const matchingSubscriberId =
-    selectedTopic === 'feed' ? 'feeder' : selectedTopic === 'status' ? 'mobile' : 'neighbor';
+  // Check which subscriber matches the current topic
+  const matchedSubscriber = SUBSCRIBERS.find((s) => s.topic.trim() === topicInput.trim());
+  const isTopicMatched = Boolean(matchedSubscriber);
 
   // Smooth animation loop
   useEffect(() => {
@@ -47,7 +66,7 @@ export default function ArchitecturePage() {
       return;
     }
 
-    const stepDurationMs = 4500; // 4.5s for full round-trip journey
+    const baseDurationMs = 6500 / speedMultiplier; // ~6.5s at 1x, ~10.8s at 0.6x
 
     const animate = (timestamp: number) => {
       if (!lastTimeRef.current) lastTimeRef.current = timestamp;
@@ -55,13 +74,13 @@ export default function ArchitecturePage() {
       lastTimeRef.current = timestamp;
 
       setAnimProgress((prev) => {
-        const next = prev + (delta / stepDurationMs) * 100;
+        const next = prev + (delta / baseDurationMs) * 100;
         if (next >= 100) {
           if (!autoLoop) {
             setIsPlaying(false);
             return 100;
           }
-          return 0; // restart loop
+          return 0; // restart
         }
         return next;
       });
@@ -75,18 +94,14 @@ export default function ArchitecturePage() {
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [isPlaying, autoLoop]);
+  }, [isPlaying, autoLoop, speedMultiplier]);
 
   const handleStart = () => {
-    if (animProgress >= 100) {
-      setAnimProgress(0);
-    }
+    if (animProgress >= 100) setAnimProgress(0);
     setIsPlaying(true);
   };
 
-  const handlePause = () => {
-    setIsPlaying(false);
-  };
+  const handlePause = () => setIsPlaying(false);
 
   const handleReset = () => {
     setIsPlaying(false);
@@ -94,109 +109,149 @@ export default function ArchitecturePage() {
   };
 
   // ── Coordinates for the SVG Canvas ───────────────────────────────────────────
-  // Canvas width: 900, height: 440
+  // Canvas ViewBox: 900 x 440
   const pubPos = { x: 130, y: 220 };
   const brokerPos = { x: 450, y: 220 };
   const subPositions: Record<string, { x: number; y: number }> = {
     feeder: { x: 770, y: 80 },
     mobile: { x: 770, y: 220 },
-    neighbor: { x: 770, y: 360 },
+    other_user: { x: 770, y: 360 },
   };
 
-  // Current stage calculation:
-  // Phase 1 (0 - 32%): Outbound Publisher -> Broker
-  // Phase 2 (32 - 46%): At Broker (Topic evaluation & Broker PUBACK)
-  // Phase 3 (46 - 72%): Broker -> Subscribed Subscriber
-  // Phase 4 (72 - 82%): Subscriber actuates & prepares ACK
-  // Phase 5 (82 - 100%): Return ACK from Subscriber -> Broker -> Publisher
-  let currentStageText = 'Idle - Ready to dispatch packet';
-  let stageBadgeColor = 'bg-stone-100 text-stone-600 border-stone-200';
+  // ── Particle Dot Motion Calculations ─────────────────────────────────────────
+  // If topic is MATCHED:
+  // Phase 1 (0 - 35%): Outbound Publisher -> Broker
+  // Phase 2 (35 - 45%): At Broker (Topic evaluation & Broker PUBACK)
+  // Phase 3 (45 - 75%): Broker -> Subscribed Subscriber ONLY
+  // Phase 4 (75 - 82%): Subscriber actuates & triggers ACK
+  // Phase 5 (82 - 100%): Return ACK Particle from Subscriber -> Broker -> Publisher
+  //
+  // If topic is UNMATCHED (INVALID):
+  // Phase 1 (0 - 45%): Outbound Publisher -> Broker
+  // Phase 2 (45 - 55%): Broker detects 0 subscribers! Packet dropped.
+  // Phase 3 (55 - 100%): Return Error ACK Particle from Broker -> Publisher (No forward to subscribers)
 
-  let packetPos = { x: pubPos.x, y: pubPos.y, visible: false, isAck: false, label: '' };
+  let stageLabel = 'Ready - Click Dispatch Packet';
+  let stageType: 'info' | 'warn' | 'success' | 'error' = 'info';
 
-  if (animProgress > 0 && animProgress <= 32) {
-    // Stage 1: Moving from Publisher to Broker
-    const t = animProgress / 32;
-    packetPos = {
-      x: pubPos.x + (brokerPos.x - pubPos.x) * t,
-      y: pubPos.y,
-      visible: true,
-      isAck: false,
-      label: currentPayloadSummary,
-    };
-    currentStageText = `1. Publisher sends packet on [${currentPublishedTopic}] ➔ Traveling to Broker`;
-    stageBadgeColor = 'bg-blue-50 text-blue-700 border-blue-200';
-  } else if (animProgress > 32 && animProgress <= 46) {
-    // Stage 2: In Broker, Broker sends PUBACK back & filters topics
-    packetPos = {
-      x: brokerPos.x,
-      y: brokerPos.y,
-      visible: true,
-      isAck: false,
-      label: 'Filtering...',
-    };
-    currentStageText = `2. Broker receives packet! Emits PUBACK and evaluates topic filters`;
-    stageBadgeColor = 'bg-amber-50 text-amber-800 border-amber-300';
-  } else if (animProgress > 46 && animProgress <= 72) {
-    // Stage 3: Moving from Broker to Matched Subscriber
-    const target = subPositions[matchingSubscriberId];
-    const t = (animProgress - 46) / (72 - 46);
-    // Cubic bezier interpolation
-    const startX = brokerPos.x;
-    const startY = brokerPos.y;
-    const endX = target.x;
-    const endY = target.y;
+  let dot = {
+    x: pubPos.x,
+    y: pubPos.y,
+    visible: false,
+    color: '#3b82f6', // default blue
+    glowColor: '#93c5fd',
+  };
 
-    packetPos = {
-      x: startX + (endX - startX) * t,
-      y: startY + (endY - startY) * t,
-      visible: true,
-      isAck: false,
-      label: currentPayloadSummary,
-    };
-    currentStageText = `3. Topic MATCH! Broker pushes packet ONLY to matching subscriber`;
-    stageBadgeColor = 'bg-purple-50 text-purple-700 border-purple-200';
-  } else if (animProgress > 72 && animProgress <= 82) {
-    // Stage 4: Arrived at Subscriber
-    const target = subPositions[matchingSubscriberId];
-    packetPos = {
-      x: target.x,
-      y: target.y,
-      visible: true,
-      isAck: true,
-      label: 'Processing',
-    };
-    currentStageText = `4. Subscriber received packet! Triggering action (Servo 90°) & generating ACK`;
-    stageBadgeColor = 'bg-emerald-50 text-emerald-800 border-emerald-300';
-  } else if (animProgress > 82 && animProgress <= 100) {
-    // Stage 5: Reverse ACK traveling back to Publisher
-    const source = subPositions[matchingSubscriberId];
-    const t = (animProgress - 82) / (100 - 82);
-
-    // Moves from Subscriber -> Broker -> Publisher
-    let ackX = source.x;
-    let ackY = source.y;
-    if (t < 0.5) {
-      // Sub -> Broker
-      const localT = t / 0.5;
-      ackX = source.x + (brokerPos.x - source.x) * localT;
-      ackY = source.y + (brokerPos.y - source.y) * localT;
-    } else {
-      // Broker -> Publisher
-      const localT = (t - 0.5) / 0.5;
-      ackX = brokerPos.x + (pubPos.x - brokerPos.x) * localT;
-      ackY = brokerPos.y;
+  if (isTopicMatched && matchedSubscriber) {
+    if (animProgress > 0 && animProgress <= 35) {
+      // Stage 1: Publisher to Broker
+      const t = animProgress / 35;
+      dot = {
+        x: pubPos.x + (brokerPos.x - pubPos.x) * t,
+        y: pubPos.y,
+        visible: true,
+        color: '#f97316', // orange data pulse
+        glowColor: '#fdba74',
+      };
+      stageLabel = `1. Transmitting packet on [${topicInput}] to HiveMQ Broker`;
+      stageType = 'info';
+    } else if (animProgress > 35 && animProgress <= 45) {
+      // Stage 2: In Broker, Broker PUBACK
+      dot = {
+        x: brokerPos.x,
+        y: brokerPos.y,
+        visible: true,
+        color: '#f59e0b', // amber
+        glowColor: '#fde68a',
+      };
+      stageLabel = `2. Broker received packet! PUBACK confirmed. Looking up subscribers...`;
+      stageType = 'warn';
+    } else if (animProgress > 45 && animProgress <= 75) {
+      // Stage 3: Broker to Matched Subscriber
+      const target = subPositions[matchedSubscriber.id];
+      const t = (animProgress - 45) / (75 - 45);
+      dot = {
+        x: brokerPos.x + (target.x - brokerPos.x) * t,
+        y: brokerPos.y + (target.y - brokerPos.y) * t,
+        visible: true,
+        color: matchedSubscriber.accentColor,
+        glowColor: '#86efac',
+      };
+      stageLabel = `3. Topic MATCH! Pushing packet to ${matchedSubscriber.name}`;
+      stageType = 'info';
+    } else if (animProgress > 75 && animProgress <= 82) {
+      // Stage 4: Arrived at Subscriber
+      const target = subPositions[matchedSubscriber.id];
+      dot = {
+        x: target.x,
+        y: target.y,
+        visible: true,
+        color: '#10b981', // green
+        glowColor: '#6ee7b7',
+      };
+      stageLabel = `4. ${matchedSubscriber.name} received packet! Triggering action & emitting ACK`;
+      stageType = 'success';
+    } else if (animProgress > 82 && animProgress <= 100) {
+      // Stage 5: Return ACK: Subscriber -> Broker -> Publisher
+      const source = subPositions[matchedSubscriber.id];
+      const t = (animProgress - 82) / (100 - 82);
+      let ackX = source.x;
+      let ackY = source.y;
+      if (t < 0.5) {
+        const localT = t / 0.5;
+        ackX = source.x + (brokerPos.x - source.x) * localT;
+        ackY = source.y + (brokerPos.y - source.y) * localT;
+      } else {
+        const localT = (t - 0.5) / 0.5;
+        ackX = brokerPos.x + (pubPos.x - brokerPos.x) * localT;
+        ackY = brokerPos.y;
+      }
+      dot = {
+        x: ackX,
+        y: ackY,
+        visible: true,
+        color: '#059669', // emerald ACK
+        glowColor: '#34d399',
+      };
+      stageLabel = `5. Return ACK packet delivered back to Publisher: SUCCESS ✓`;
+      stageType = 'success';
     }
-
-    packetPos = {
-      x: ackX,
-      y: ackY,
-      visible: true,
-      isAck: true,
-      label: 'ACK: Success',
-    };
-    currentStageText = `5. Return Response/ACK packet returns to Publisher: Confirmed!`;
-    stageBadgeColor = 'bg-emerald-50 text-emerald-800 border-emerald-300';
+  } else {
+    // ── UNMATCHED / INVALID TOPIC SCENARIO ──
+    if (animProgress > 0 && animProgress <= 45) {
+      const t = animProgress / 45;
+      dot = {
+        x: pubPos.x + (brokerPos.x - pubPos.x) * t,
+        y: pubPos.y,
+        visible: true,
+        color: '#f97316',
+        glowColor: '#fdba74',
+      };
+      stageLabel = `1. Transmitting packet on unregistered topic [${topicInput}] to Broker`;
+      stageType = 'info';
+    } else if (animProgress > 45 && animProgress <= 58) {
+      dot = {
+        x: brokerPos.x,
+        y: brokerPos.y,
+        visible: true,
+        color: '#ef4444', // red flash
+        glowColor: '#fca5a5',
+      };
+      stageLabel = `2. Broker Check: 0 subscribers registered for [${topicInput}]! Packet dropped!`;
+      stageType = 'error';
+    } else if (animProgress > 58 && animProgress <= 100) {
+      // Return Error ACK from Broker -> Publisher
+      const t = (animProgress - 58) / (100 - 58);
+      dot = {
+        x: brokerPos.x + (pubPos.x - brokerPos.x) * t,
+        y: brokerPos.y,
+        visible: true,
+        color: '#dc2626', // dark red error ACK
+        glowColor: '#f87171',
+      };
+      stageLabel = `3. Broker returns Error ACK: No active subscribers (Packet Discarded ✗)`;
+      stageType = 'error';
+    }
   }
 
   return (
@@ -207,71 +262,136 @@ export default function ArchitecturePage() {
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold text-gray-900">MQTT Architecture</h1>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-              Interactive Simulation
+              Student Lab & Simulator
             </span>
           </div>
           <p className="text-gray-500 text-sm mt-0.5">
-            Topic-based publish/subscribe routing & packet flow
+            Topic-based publish/subscribe packet routing and return acknowledgment flow
           </p>
         </div>
 
-        {/* Topic Selector Pills */}
+        {/* Speed Controls */}
         <div className="flex items-center gap-1.5 bg-stone-100 p-1 rounded-xl border border-stone-200">
+          <span className="text-[11px] font-semibold text-stone-500 px-2">Speed:</span>
           <button
-            onClick={() => { setSelectedTopic('feed'); handleReset(); }}
-            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-              selectedTopic === 'feed'
+            onClick={() => setSpeedMultiplier(0.6)}
+            className={`px-2.5 py-0.5 rounded-lg text-xs font-bold transition-all ${
+              speedMultiplier === 0.6
                 ? 'bg-white text-orange-700 shadow-2xs border border-stone-200'
                 : 'text-stone-600 hover:text-stone-900'
             }`}
           >
-            🐱 Feed Command
+            🐢 0.6x Slow
           </button>
           <button
-            onClick={() => { setSelectedTopic('status'); handleReset(); }}
-            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-              selectedTopic === 'status'
+            onClick={() => setSpeedMultiplier(1.0)}
+            className={`px-2.5 py-0.5 rounded-lg text-xs font-bold transition-all ${
+              speedMultiplier === 1.0
                 ? 'bg-white text-blue-700 shadow-2xs border border-stone-200'
                 : 'text-stone-600 hover:text-stone-900'
             }`}
           >
-            📱 App Status
+            1.0x Normal
           </button>
           <button
-            onClick={() => { setSelectedTopic('other_user'); handleReset(); }}
-            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-              selectedTopic === 'other_user'
-                ? 'bg-white text-purple-700 shadow-2xs border border-stone-200'
+            onClick={() => setSpeedMultiplier(1.5)}
+            className={`px-2.5 py-0.5 rounded-lg text-xs font-bold transition-all ${
+              speedMultiplier === 1.5
+                ? 'bg-white text-emerald-700 shadow-2xs border border-stone-200'
                 : 'text-stone-600 hover:text-stone-900'
             }`}
           >
-            🔒 Other User Topic
+            ⚡ 1.5x Fast
           </button>
         </div>
       </div>
 
-      {/* ── 1. Compact Definition Box ───────────────────────────────────────────── */}
-      <div className="bg-gradient-to-r from-orange-50/70 via-amber-50/40 to-stone-50 border border-amber-200/80 rounded-2xl p-4 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-orange-500 text-white flex items-center justify-center shrink-0 shadow-sm">
-            <Radio className="w-4 h-4" />
+      {/* ── 1. Interactive Topic Selector for Students ───────────────────────────── */}
+      <div className="bg-white border border-stone-200 rounded-2xl p-5 shadow-sm space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-cat-500" />
+            <h2 className="text-sm font-bold text-gray-900">Student Topic Dispatcher</h2>
           </div>
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-orange-600 bg-orange-100/70 px-1.5 py-0.5 rounded">
-                MQTT Core Rule
-              </span>
-              <p className="text-sm text-gray-800 font-medium">
-                Publishers send messages to a <strong className="text-gray-900">Topic</strong>. The <strong className="text-amber-800">Broker</strong> delivers each packet <span className="underline decoration-orange-400 font-semibold">ONLY</span> to subscribers that registered matching topics.
-              </p>
-            </div>
-          </div>
+          <span className="text-xs text-gray-500">
+            Pick a preset topic or type your own to test routing behavior
+          </span>
+        </div>
+
+        {/* Preset Topic Buttons */}
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => { setTopicInput('smartcat/geo123/device/command'); handleReset(); }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+              topicInput === 'smartcat/geo123/device/command'
+                ? 'bg-emerald-50 text-emerald-900 border-emerald-400 ring-2 ring-emerald-200 shadow-xs'
+                : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
+            }`}
+          >
+            🐱 Feed Command (Targets Feeder)
+          </button>
+
+          <button
+            onClick={() => { setTopicInput('smartcat/geo123/device/status'); handleReset(); }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+              topicInput === 'smartcat/geo123/device/status'
+                ? 'bg-blue-50 text-blue-900 border-blue-400 ring-2 ring-blue-200 shadow-xs'
+                : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
+            }`}
+          >
+            📱 App Status (Targets Mobile)
+          </button>
+
+          <button
+            onClick={() => { setTopicInput('smartcat/user999/device/command'); handleReset(); }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+              topicInput === 'smartcat/user999/device/command'
+                ? 'bg-purple-50 text-purple-900 border-purple-400 ring-2 ring-purple-200 shadow-xs'
+                : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
+            }`}
+          >
+            🔒 Other User Topic (Isolation)
+          </button>
+
+          <button
+            onClick={() => { setTopicInput('sensor/kitchen/temperature'); handleReset(); }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+              topicInput === 'sensor/kitchen/temperature'
+                ? 'bg-rose-50 text-rose-900 border-rose-400 ring-2 ring-rose-200 shadow-xs'
+                : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
+            }`}
+          >
+            ❌ Invalid Topic (Tests Error ACK)
+          </button>
+        </div>
+
+        {/* Custom Editable Topic Input */}
+        <div className="flex items-center gap-2 pt-1">
+          <span className="text-xs font-semibold text-gray-600 shrink-0">Publish Topic:</span>
+          <input
+            type="text"
+            value={topicInput}
+            onChange={(e) => { setTopicInput(e.target.value); handleReset(); }}
+            className="flex-1 px-3 py-1.5 rounded-lg border border-stone-300 text-xs font-mono text-gray-800 bg-stone-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-cat-400"
+            placeholder="Type any MQTT topic..."
+          />
+          {isTopicMatched ? (
+            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 shrink-0">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              Matches {matchedSubscriber?.name.split(' ')[0]}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-700 bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200 shrink-0">
+              <XCircle className="w-3.5 h-3.5 text-rose-600" />
+              0 Subscribers (Will Drop & Error)
+            </span>
+          )}
         </div>
       </div>
 
       {/* ── 2. Interactive SVG Canvas Simulation ─────────────────────────────────── */}
       <div className="bg-white border border-stone-200 rounded-2xl p-5 shadow-sm space-y-4">
-        {/* Controls Bar */}
+        {/* Playback Controls & Status Pill */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-stone-50/90 p-3 rounded-xl border border-stone-200/90">
           <div className="flex items-center gap-2">
             <button
@@ -306,9 +426,19 @@ export default function ArchitecturePage() {
           </div>
 
           {/* Current Status Pill */}
-          <div className={`text-xs font-semibold px-3 py-1 rounded-full border flex items-center gap-1.5 ${stageBadgeColor}`}>
+          <div
+            className={`text-xs font-semibold px-3 py-1.5 rounded-full border flex items-center gap-1.5 ${
+              stageType === 'success'
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                : stageType === 'warn'
+                ? 'bg-amber-50 text-amber-800 border-amber-300'
+                : stageType === 'error'
+                ? 'bg-rose-50 text-rose-800 border-rose-300'
+                : 'bg-blue-50 text-blue-800 border-blue-200'
+            }`}
+          >
             <span className="w-2 h-2 rounded-full bg-current animate-pulse shrink-0" />
-            <span>{currentStageText}</span>
+            <span>{stageLabel}</span>
           </div>
         </div>
 
@@ -320,7 +450,6 @@ export default function ArchitecturePage() {
             style={{ maxHeight: '520px' }}
           >
             <defs>
-              {/* Arrow Marker Definitions */}
               <marker id="arrow-blue" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
                 <path d="M 0 1 L 10 5 L 0 9 z" fill="#3b82f6" />
               </marker>
@@ -333,6 +462,9 @@ export default function ArchitecturePage() {
               <marker id="arrow-ack" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
                 <path d="M 0 1 L 10 5 L 0 9 z" fill="#059669" />
               </marker>
+              <marker id="arrow-error" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 1 L 10 5 L 0 9 z" fill="#dc2626" />
+              </marker>
             </defs>
 
             {/* ── Connecting Wire: Publisher to Broker ──────────────────────── */}
@@ -341,14 +473,13 @@ export default function ArchitecturePage() {
               y1="220"
               x2="380"
               y2="220"
-              stroke={animProgress > 0 && animProgress <= 35 ? '#3b82f6' : '#d6d3d1'}
+              stroke={animProgress > 0 && animProgress <= 35 ? '#f97316' : '#d6d3d1'}
               strokeWidth={animProgress > 0 && animProgress <= 35 ? '3.5' : '2'}
               strokeDasharray={animProgress > 0 && animProgress <= 35 ? '5,5' : 'none'}
               markerEnd="url(#arrow-blue)"
               className="transition-all duration-300"
             />
-            {/* Publisher to Broker Label */}
-            <text x="295" y="208" textAnchor="middle" className="text-[11px] font-bold fill-blue-600">
+            <text x="295" y="208" textAnchor="middle" className="text-[11px] font-bold fill-gray-700">
               PUBLISH (QoS 1)
             </text>
 
@@ -358,15 +489,34 @@ export default function ArchitecturePage() {
               y1="235"
               x2="210"
               y2="235"
-              stroke={animProgress > 32 && animProgress <= 46 ? '#10b981' : '#e7e5e4'}
-              strokeWidth={animProgress > 32 && animProgress <= 46 ? '3' : '1.5'}
+              stroke={animProgress > 35 && animProgress <= 45 ? '#10b981' : '#e7e5e4'}
+              strokeWidth={animProgress > 35 && animProgress <= 45 ? '3' : '1.5'}
               strokeDasharray="4,4"
               markerEnd="url(#arrow-ack)"
             />
-            {animProgress > 32 && animProgress <= 46 && (
+            {animProgress > 35 && animProgress <= 45 && (
               <text x="295" y="250" textAnchor="middle" className="text-[10px] font-bold fill-emerald-600">
                 ⚡ PUBACK Confirmed (&lt;40ms)
               </text>
+            )}
+
+            {/* ── Return Wire for Error ACK (When Topic is Unmatched) ────────── */}
+            {!isTopicMatched && animProgress > 58 && (
+              <>
+                <line
+                  x1="380"
+                  y1="245"
+                  x2="210"
+                  y2="245"
+                  stroke="#dc2626"
+                  strokeWidth="3"
+                  strokeDasharray="4,4"
+                  markerEnd="url(#arrow-error)"
+                />
+                <text x="295" y="260" textAnchor="middle" className="text-[10px] font-bold fill-rose-700">
+                  ❌ Error ACK: 0 Subscribers (Packet Dropped)
+                </text>
+              </>
             )}
 
             {/* ── Lines from Broker to each Subscriber ────────────────────────── */}
@@ -376,15 +526,15 @@ export default function ArchitecturePage() {
               d="M 520 220 C 580 220, 600 80, 670 80"
               fill="none"
               stroke={
-                matchingSubscriberId === 'feeder' && animProgress > 45 && animProgress <= 75
+                matchedSubscriber?.id === 'feeder' && animProgress > 45 && animProgress <= 75
                   ? '#10b981'
-                  : matchingSubscriberId === 'feeder'
+                  : matchedSubscriber?.id === 'feeder'
                   ? '#86efac'
                   : '#e7e5e4'
               }
-              strokeWidth={matchingSubscriberId === 'feeder' && animProgress > 45 ? '3.5' : '2'}
-              strokeDasharray={matchingSubscriberId === 'feeder' && animProgress > 45 ? '6,6' : 'none'}
-              markerEnd={matchingSubscriberId === 'feeder' ? 'url(#arrow-green)' : 'url(#arrow-gray)'}
+              strokeWidth={matchedSubscriber?.id === 'feeder' && animProgress > 45 ? '3.5' : '2'}
+              strokeDasharray={matchedSubscriber?.id === 'feeder' && animProgress > 45 ? '6,6' : 'none'}
+              markerEnd={matchedSubscriber?.id === 'feeder' ? 'url(#arrow-green)' : 'url(#arrow-gray)'}
               className="transition-all duration-300"
             />
 
@@ -395,42 +545,42 @@ export default function ArchitecturePage() {
               x2="670"
               y2="220"
               stroke={
-                matchingSubscriberId === 'mobile' && animProgress > 45 && animProgress <= 75
+                matchedSubscriber?.id === 'mobile' && animProgress > 45 && animProgress <= 75
                   ? '#3b82f6'
-                  : matchingSubscriberId === 'mobile'
+                  : matchedSubscriber?.id === 'mobile'
                   ? '#93c5fd'
                   : '#e7e5e4'
               }
-              strokeWidth={matchingSubscriberId === 'mobile' && animProgress > 45 ? '3.5' : '2'}
-              strokeDasharray={matchingSubscriberId === 'mobile' && animProgress > 45 ? '6,6' : 'none'}
-              markerEnd={matchingSubscriberId === 'mobile' ? 'url(#arrow-blue)' : 'url(#arrow-gray)'}
+              strokeWidth={matchedSubscriber?.id === 'mobile' && animProgress > 45 ? '3.5' : '2'}
+              strokeDasharray={matchedSubscriber?.id === 'mobile' && animProgress > 45 ? '6,6' : 'none'}
+              markerEnd={matchedSubscriber?.id === 'mobile' ? 'url(#arrow-blue)' : 'url(#arrow-gray)'}
               className="transition-all duration-300"
             />
 
-            {/* Path to Subscriber 3: Neighbor (Bottom) */}
+            {/* Path to Subscriber 3: Other Feeder (Bottom) */}
             <path
               d="M 520 220 C 580 220, 600 360, 670 360"
               fill="none"
               stroke={
-                matchingSubscriberId === 'neighbor' && animProgress > 45 && animProgress <= 75
+                matchedSubscriber?.id === 'other_user' && animProgress > 45 && animProgress <= 75
                   ? '#8b5cf6'
-                  : matchingSubscriberId === 'neighbor'
+                  : matchedSubscriber?.id === 'other_user'
                   ? '#c4b5fd'
                   : '#e7e5e4'
               }
-              strokeWidth={matchingSubscriberId === 'neighbor' && animProgress > 45 ? '3.5' : '2'}
-              strokeDasharray={matchingSubscriberId === 'neighbor' && animProgress > 45 ? '6,6' : 'none'}
-              markerEnd={matchingSubscriberId === 'neighbor' ? 'url(#arrow-green)' : 'url(#arrow-gray)'}
+              strokeWidth={matchedSubscriber?.id === 'other_user' && animProgress > 45 ? '3.5' : '2'}
+              strokeDasharray={matchedSubscriber?.id === 'other_user' && animProgress > 45 ? '6,6' : 'none'}
+              markerEnd={matchedSubscriber?.id === 'other_user' ? 'url(#arrow-green)' : 'url(#arrow-gray)'}
               className="transition-all duration-300"
             />
 
             {/* ── Return ACK Wire (From Matched Sub back to Broker) ──────────── */}
-            {animProgress > 80 && (
+            {isTopicMatched && animProgress > 80 && (
               <path
                 d={
-                  matchingSubscriberId === 'feeder'
+                  matchedSubscriber?.id === 'feeder'
                     ? 'M 670 95 C 600 95, 580 230, 520 230'
-                    : matchingSubscriberId === 'mobile'
+                    : matchedSubscriber?.id === 'mobile'
                     ? 'M 670 230 L 520 230'
                     : 'M 670 345 C 600 345, 580 230, 520 230'
                 }
@@ -453,51 +603,68 @@ export default function ArchitecturePage() {
                 strokeWidth="2"
                 className="shadow-sm"
               />
-              <text x="85" y="26" textAnchor="middle" className="text-[12px] font-bold fill-blue-900">
-                🌐 Web / Cloud API
+              <text x="85" y="24" textAnchor="middle" className="text-[12px] font-bold fill-blue-900">
+                🌐 Web Client / Server
               </text>
-              <text x="85" y="44" textAnchor="middle" className="text-[10px] font-semibold fill-blue-600">
+              <text x="85" y="40" textAnchor="middle" className="text-[10px] font-semibold fill-blue-600">
                 PUBLISHER
               </text>
-              <rect x="10" y="55" width="150" height="24" rx="6" fill="#ffffff" stroke="#bfdbfe" />
-              <text x="85" y="71" textAnchor="middle" className="text-[9px] font-mono fill-blue-950 font-semibold">
-                PUB: {currentPublishedTopic.length > 22 ? currentPublishedTopic.slice(0, 20) + '...' : currentPublishedTopic}
+              <rect x="8" y="52" width="154" height="28" rx="6" fill="#ffffff" stroke="#bfdbfe" />
+              <text x="85" y="66" textAnchor="middle" className="text-[8.5px] font-bold fill-gray-500">
+                PUBLISH TOPIC:
               </text>
-              <text x="85" y="102" textAnchor="middle" className="text-[9px] font-mono fill-gray-500">
-                {currentPayloadSummary}
+              <text x="85" y="76" textAnchor="middle" className="text-[8.5px] font-mono fill-blue-950 font-bold">
+                {topicInput.length > 22 ? topicInput.slice(0, 20) + '...' : topicInput}
+              </text>
+              <text x="85" y="103" textAnchor="middle" className="text-[9px] font-mono fill-gray-500">
+                QoS 1 Acknowledged
               </text>
             </g>
 
             {/* ── 2. CENTRAL BROKER NODE (CENTER) ────────────────────────────── */}
-            <g transform="translate(370, 150)">
+            <g transform="translate(370, 145)">
               <rect
                 width="160"
-                height="140"
+                height="150"
                 rx="16"
-                fill={animProgress > 30 && animProgress < 50 ? '#fef3c7' : '#fffbeb'}
-                stroke={animProgress > 30 && animProgress < 50 ? '#d97706' : '#f59e0b'}
-                strokeWidth={animProgress > 30 && animProgress < 50 ? '3' : '2'}
-                className="shadow-sm"
+                fill={
+                  !isTopicMatched && animProgress > 45 && animProgress < 60
+                    ? '#fee2e2'
+                    : animProgress > 30 && animProgress < 50
+                    ? '#fef3c7'
+                    : '#fffbeb'
+                }
+                stroke={
+                  !isTopicMatched && animProgress > 45 && animProgress < 60
+                    ? '#ef4444'
+                    : animProgress > 30 && animProgress < 50
+                    ? '#d97706'
+                    : '#f59e0b'
+                }
+                strokeWidth="2.5"
+                className="shadow-sm transition-all"
               />
-              <text x="80" y="28" textAnchor="middle" className="text-[13px] font-bold fill-amber-950">
+              <text x="80" y="26" textAnchor="middle" className="text-[13px] font-bold fill-amber-950">
                 📡 HiveMQ Broker
               </text>
-              <text x="80" y="46" textAnchor="middle" className="text-[10px] font-semibold fill-amber-700">
+              <text x="80" y="42" textAnchor="middle" className="text-[10px] font-semibold fill-amber-700">
                 broker.hivemq.com:1883
               </text>
 
-              <rect x="12" y="56" width="136" height="42" rx="8" fill="#ffffff" stroke="#fde68a" />
-              <text x="80" y="73" textAnchor="middle" className="text-[9px] font-bold fill-amber-900">
-                Topic Filter Engine
+              <rect x="10" y="52" width="140" height="48" rx="8" fill="#ffffff" stroke="#fde68a" />
+              <text x="80" y="68" textAnchor="middle" className="text-[9px] font-bold fill-amber-900">
+                Topic Routing Table
               </text>
-              <text x="80" y="88" textAnchor="middle" className="text-[8px] font-mono fill-gray-600">
-                Matches & Dispatches
+              <text x="80" y="82" textAnchor="middle" className="text-[8px] font-mono fill-gray-600">
+                {isTopicMatched ? 'Filter: 1 Match Found' : 'Filter: 0 Matches (DROP)'}
+              </text>
+              <text x="80" y="93" textAnchor="middle" className="text-[8px] font-bold fill-emerald-600">
+                {isTopicMatched ? `➔ Target: ${matchedSubscriber?.name.split(' ')[0]}` : '➔ Emitting Error ACK'}
               </text>
 
-              {/* Status Indicator */}
-              <circle cx="24" cy="118" r="4" fill="#10b981" />
-              <text x="34" y="121" className="text-[9px] font-bold fill-gray-700">
-                Active & Listening
+              <circle cx="20" cy="124" r="4" fill={isTopicMatched ? '#10b981' : '#ef4444'} />
+              <text x="30" y="127" className="text-[9px] font-bold fill-gray-700">
+                {isTopicMatched ? 'Routing Active' : 'Unmatched / Dropped'}
               </text>
             </g>
 
@@ -506,169 +673,166 @@ export default function ArchitecturePage() {
             {/* Subscriber 1: Cat Feeder (Top) */}
             <g transform="translate(670, 25)">
               <rect
-                width="200"
+                width="205"
                 height="110"
                 rx="14"
-                fill={matchingSubscriberId === 'feeder' ? '#f0fdf4' : '#fafaf9'}
-                stroke={matchingSubscriberId === 'feeder' ? '#22c55e' : '#d6d3d1'}
-                strokeWidth={matchingSubscriberId === 'feeder' ? '2.5' : '1.5'}
+                fill={matchedSubscriber?.id === 'feeder' ? '#f0fdf4' : '#fafaf9'}
+                stroke={matchedSubscriber?.id === 'feeder' ? '#22c55e' : '#d6d3d1'}
+                strokeWidth={matchedSubscriber?.id === 'feeder' ? '2.5' : '1.5'}
                 className="shadow-sm"
               />
-              <text x="100" y="24" textAnchor="middle" className="text-[12px] font-bold fill-gray-900">
+              <text x="102" y="22" textAnchor="middle" className="text-[12px] font-bold fill-gray-900">
                 🐱 Cat Feeder (UNO R4)
               </text>
-              <text x="100" y="40" textAnchor="middle" className="text-[10px] font-semibold fill-emerald-700">
+              <text x="102" y="38" textAnchor="middle" className="text-[8.5px] font-mono font-bold fill-emerald-800">
                 SUB: smartcat/geo123/device/command
               </text>
 
-              {/* Match or Mismatch Badge */}
-              {matchingSubscriberId === 'feeder' ? (
-                <rect x="25" y="50" width="150" height="22" rx="6" fill="#dcfce7" stroke="#86efac" />
+              {matchedSubscriber?.id === 'feeder' ? (
+                <rect x="15" y="48" width="175" height="22" rx="6" fill="#dcfce7" stroke="#86efac" />
               ) : (
-                <rect x="25" y="50" width="150" height="22" rx="6" fill="#f5f5f4" stroke="#e7e5e4" />
+                <rect x="15" y="48" width="175" height="22" rx="6" fill="#f5f5f4" stroke="#e7e5e4" />
               )}
               <text
-                x="100"
-                y="65"
+                x="102"
+                y="63"
                 textAnchor="middle"
-                className={`text-[9px] font-bold ${matchingSubscriberId === 'feeder' ? 'fill-emerald-800' : 'fill-gray-400'}`}
+                className={`text-[9px] font-bold ${matchedSubscriber?.id === 'feeder' ? 'fill-emerald-800' : 'fill-gray-400'}`}
               >
-                {matchingSubscriberId === 'feeder' ? '✅ TOPIC MATCH - ACCEPTS' : '❌ Topic Mismatch - Ignored'}
+                {matchedSubscriber?.id === 'feeder' ? '✅ TOPIC MATCH — ACCEPTS' : '❌ Topic Mismatch — Ignored'}
               </text>
 
-              <text x="100" y="93" textAnchor="middle" className="text-[9px] font-medium fill-gray-600">
-                {matchingSubscriberId === 'feeder' && animProgress >= 70 && animProgress <= 85
-                  ? '🥣 Servo Rotates 90° (Food Out!)'
-                  : 'Triggers physical servo dispenser'}
+              <text x="102" y="93" textAnchor="middle" className="text-[9px] font-medium fill-gray-600">
+                {matchedSubscriber?.id === 'feeder' && animProgress >= 70 && animProgress <= 85
+                  ? '🥣 Servo Rotates 90° (Dispensing!)'
+                  : 'Rotates servo to dispense food'}
               </text>
             </g>
 
             {/* Subscriber 2: Owner Mobile App (Middle) */}
             <g transform="translate(670, 165)">
               <rect
-                width="200"
+                width="205"
                 height="110"
                 rx="14"
-                fill={matchingSubscriberId === 'mobile' ? '#f0fdf4' : '#fafaf9'}
-                stroke={matchingSubscriberId === 'mobile' ? '#22c55e' : '#d6d3d1'}
-                strokeWidth={matchingSubscriberId === 'mobile' ? '2.5' : '1.5'}
+                fill={matchedSubscriber?.id === 'mobile' ? '#f0fdf4' : '#fafaf9'}
+                stroke={matchedSubscriber?.id === 'mobile' ? '#22c55e' : '#d6d3d1'}
+                strokeWidth={matchedSubscriber?.id === 'mobile' ? '2.5' : '1.5'}
                 className="shadow-sm"
               />
-              <text x="100" y="24" textAnchor="middle" className="text-[12px] font-bold fill-gray-900">
+              <text x="102" y="22" textAnchor="middle" className="text-[12px] font-bold fill-gray-900">
                 📱 Owner Mobile App
               </text>
-              <text x="100" y="40" textAnchor="middle" className="text-[10px] font-semibold fill-blue-700">
+              <text x="102" y="38" textAnchor="middle" className="text-[8.5px] font-mono font-bold fill-blue-800">
                 SUB: smartcat/geo123/device/status
               </text>
 
-              {/* Match or Mismatch Badge */}
-              {matchingSubscriberId === 'mobile' ? (
-                <rect x="25" y="50" width="150" height="22" rx="6" fill="#dcfce7" stroke="#86efac" />
+              {matchedSubscriber?.id === 'mobile' ? (
+                <rect x="15" y="48" width="175" height="22" rx="6" fill="#dcfce7" stroke="#86efac" />
               ) : (
-                <rect x="25" y="50" width="150" height="22" rx="6" fill="#f5f5f4" stroke="#e7e5e4" />
+                <rect x="15" y="48" width="175" height="22" rx="6" fill="#f5f5f4" stroke="#e7e5e4" />
               )}
               <text
-                x="100"
-                y="65"
+                x="102"
+                y="63"
                 textAnchor="middle"
-                className={`text-[9px] font-bold ${matchingSubscriberId === 'mobile' ? 'fill-emerald-800' : 'fill-gray-400'}`}
+                className={`text-[9px] font-bold ${matchedSubscriber?.id === 'mobile' ? 'fill-emerald-800' : 'fill-gray-400'}`}
               >
-                {matchingSubscriberId === 'mobile' ? '✅ TOPIC MATCH - ACCEPTS' : '❌ Topic Mismatch - Ignored'}
+                {matchedSubscriber?.id === 'mobile' ? '✅ TOPIC MATCH — ACCEPTS' : '❌ Topic Mismatch — Ignored'}
               </text>
 
-              <text x="100" y="93" textAnchor="middle" className="text-[9px] font-medium fill-gray-600">
-                Displays live alerts & feeds count
+              <text x="102" y="93" textAnchor="middle" className="text-[9px] font-medium fill-gray-600">
+                Receives telemetry & status alerts
               </text>
             </g>
 
-            {/* Subscriber 3: Neighbor (Bottom) */}
+            {/* Subscriber 3: Other Feeder (Bottom) */}
             <g transform="translate(670, 305)">
               <rect
-                width="200"
+                width="205"
                 height="110"
                 rx="14"
-                fill={matchingSubscriberId === 'neighbor' ? '#f0fdf4' : '#fafaf9'}
-                stroke={matchingSubscriberId === 'neighbor' ? '#22c55e' : '#d6d3d1'}
-                strokeWidth={matchingSubscriberId === 'neighbor' ? '2.5' : '1.5'}
+                fill={matchedSubscriber?.id === 'other_user' ? '#f0fdf4' : '#fafaf9'}
+                stroke={matchedSubscriber?.id === 'other_user' ? '#22c55e' : '#d6d3d1'}
+                strokeWidth={matchedSubscriber?.id === 'other_user' ? '2.5' : '1.5'}
                 className="shadow-sm"
               />
-              <text x="100" y="24" textAnchor="middle" className="text-[12px] font-bold fill-gray-900">
+              <text x="102" y="22" textAnchor="middle" className="text-[12px] font-bold fill-gray-900">
                 🔒 Feeder B (Other User)
               </text>
-              <text x="100" y="40" textAnchor="middle" className="text-[10px] font-semibold fill-purple-700">
+              <text x="102" y="38" textAnchor="middle" className="text-[8.5px] font-mono font-bold fill-purple-800">
                 SUB: smartcat/user999/device/command
               </text>
 
-              {/* Match or Mismatch Badge */}
-              {matchingSubscriberId === 'neighbor' ? (
-                <rect x="25" y="50" width="150" height="22" rx="6" fill="#dcfce7" stroke="#86efac" />
+              {matchedSubscriber?.id === 'other_user' ? (
+                <rect x="15" y="48" width="175" height="22" rx="6" fill="#dcfce7" stroke="#86efac" />
               ) : (
-                <rect x="25" y="50" width="150" height="22" rx="6" fill="#f5f5f4" stroke="#e7e5e4" />
+                <rect x="15" y="48" width="175" height="22" rx="6" fill="#f5f5f4" stroke="#e7e5e4" />
               )}
               <text
-                x="100"
-                y="65"
+                x="102"
+                y="63"
                 textAnchor="middle"
-                className={`text-[9px] font-bold ${matchingSubscriberId === 'neighbor' ? 'fill-emerald-800' : 'fill-gray-400'}`}
+                className={`text-[9px] font-bold ${matchedSubscriber?.id === 'other_user' ? 'fill-emerald-800' : 'fill-gray-400'}`}
               >
-                {matchingSubscriberId === 'neighbor' ? '✅ TOPIC MATCH - ACCEPTS' : '❌ Topic Mismatch - Ignored'}
+                {matchedSubscriber?.id === 'other_user' ? '✅ TOPIC MATCH — ACCEPTS' : '❌ Topic Mismatch — Ignored'}
               </text>
 
-              <text x="100" y="93" textAnchor="middle" className="text-[9px] font-medium fill-gray-600">
-                Isolated namespace for user 999
+              <text x="102" y="93" textAnchor="middle" className="text-[9px] font-medium fill-gray-600">
+                Multi-tenant isolation for user999
               </text>
             </g>
 
-            {/* ── ANIMATED FLYING DATA PACKET ─────────────────────────────────── */}
-            {packetPos.visible && (
-              <g transform={`translate(${packetPos.x}, ${packetPos.y})`}>
-                {/* Glow circle */}
+            {/* ── THE LUMINOUS GLOWING PARTICLEDOT (NO TEXT ON DOT) ───────────── */}
+            {dot.visible && (
+              <g transform={`translate(${dot.x}, ${dot.y})`}>
+                {/* Outer radar ripple ring */}
                 <circle
-                  r="20"
-                  fill={packetPos.isAck ? '#10b981' : '#f97316'}
-                  opacity="0.25"
+                  r="22"
+                  fill={dot.glowColor}
+                  opacity="0.35"
                   className="animate-ping"
                 />
-                {/* Solid packet bubble */}
-                <rect
-                  x="-45"
-                  y="-16"
-                  width="90"
-                  height="32"
-                  rx="16"
-                  fill={packetPos.isAck ? '#059669' : '#ea580c'}
+                {/* Mid glow disc */}
+                <circle
+                  r="14"
+                  fill={dot.glowColor}
+                  opacity="0.8"
+                />
+                {/* Core bright particle dot */}
+                <circle
+                  r="8"
+                  fill={dot.color}
                   stroke="#ffffff"
-                  strokeWidth="2"
+                  strokeWidth="2.5"
                   className="shadow-lg"
                 />
-                <text
-                  x="0"
-                  y="4"
-                  textAnchor="middle"
-                  className="text-[10px] font-extrabold fill-white tracking-tight"
-                >
-                  {packetPos.isAck ? '✅ ACK/REP' : '📦 PACKET'}
-                </text>
               </g>
             )}
           </svg>
         </div>
 
-        {/* ── Explanatory Legend Underneath ─────────────────────────────────────── */}
+        {/* ── 3. Educational Concept Cards ─────────────────────────────────────── */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-          <div className="p-3 rounded-xl border border-blue-200 bg-blue-50/40 text-xs">
-            <span className="font-bold text-blue-900 block mb-0.5">1. Target Topic Tagging</span>
-            <p className="text-gray-700">Publisher attaches a specific topic key like <code className="text-[11px] font-bold">smartcat/geo123/device/command</code> to the packet.</p>
+          <div className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/40 text-xs space-y-1">
+            <span className="font-bold text-blue-900 block">1. Decoupled Communication</span>
+            <p className="text-gray-700">
+              The publisher does not know the IP address or status of the cat feeder. It simply publishes a packet with a topic key.
+            </p>
           </div>
 
-          <div className="p-3 rounded-xl border border-amber-200 bg-amber-50/40 text-xs">
-            <span className="font-bold text-amber-900 block mb-0.5">2. Central Broker Filtering</span>
-            <p className="text-gray-700">HiveMQ Broker checks its active routing table and filters out all mismatched subscribers instantly.</p>
+          <div className="p-3.5 rounded-xl border border-amber-200 bg-amber-50/40 text-xs space-y-1">
+            <span className="font-bold text-amber-900 block">2. Topic-Based Filtering</span>
+            <p className="text-gray-700">
+              The broker maintains a lookup table. If a packet has no subscribers (e.g. invalid topic), it is dropped and an error ACK is returned.
+            </p>
           </div>
 
-          <div className="p-3 rounded-xl border border-emerald-200 bg-emerald-50/40 text-xs">
-            <span className="font-bold text-emerald-900 block mb-0.5">3. Multi-Subscriber Delivery</span>
-            <p className="text-gray-700">Packet arrives <strong className="text-emerald-800">ONLY</strong> at the subscribed device. Cat Feeder triggers its servo and returns an ACK!</p>
+          <div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/40 text-xs space-y-1">
+            <span className="font-bold text-emerald-900 block">3. Multi-Tenant Isolation</span>
+            <p className="text-gray-700">
+              User 999 cannot trigger your feeder because their device subscribes to <code className="text-[10px] font-bold">.../user999/...</code> while yours listens on <code className="text-[10px] font-bold">.../geo123/...</code>.
+            </p>
           </div>
         </div>
       </div>

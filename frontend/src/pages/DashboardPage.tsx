@@ -80,6 +80,7 @@ export default function DashboardPage() {
   });
 
   const [feeding, setFeeding]   = useState(false);
+  const [feedStage, setFeedStage] = useState<'idle' | 'broker' | 'arduino' | 'complete' | 'error'>('idle');
   const [isServerDispensing, setIsServerDispensing] = useState(false);
   const [feedResult, setFeedResult] = useState<{ success: boolean; message: string } | null>(null);
   // If we already have cached stats in this session, render instantly without full-screen loading spinner
@@ -173,13 +174,23 @@ export default function DashboardPage() {
   const handleFeedNow = async () => {
     setFeeding(true);
     setFeedResult(null);
+    setFeedStage('broker');
+
+    // After 150ms show reached broker & forwarding to Arduino
+    const arduinoStageTimer = setTimeout(() => {
+      setFeedStage('arduino');
+    }, 200);
 
     try {
       const res = await api.post('/feeds/now', { portion: 1 });
-      setFeedResult({ success: res.data.success, message: res.data.message });
+      clearTimeout(arduinoStageTimer);
+      setFeedStage('complete');
+      setFeedResult({ success: res.data.success, message: res.data.message || 'Food dispensed successfully!' });
       setIsServerDispensing(false);
       setFeeding(false);
     } catch (err: unknown) {
+      clearTimeout(arduinoStageTimer);
+      setFeedStage('error');
       const message =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
         'Feed request failed';
@@ -280,6 +291,56 @@ export default function DashboardPage() {
               </>
             )}
           </button>
+
+          {/* Multi-Stage Transmission Stepper */}
+          {feedStage !== 'idle' && (
+            <div className="bg-stone-50 border border-stone-200/90 rounded-xl p-3.5 space-y-2 animate-fade-in text-xs">
+              <span className="font-bold text-stone-700 block">Packet Delivery Progress:</span>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                {/* Stage 1: Broker */}
+                <div className={`p-2 rounded-lg border transition-all ${
+                  feedStage === 'broker'
+                    ? 'bg-blue-50 border-blue-400 text-blue-800 font-bold animate-pulse'
+                    : feedStage === 'arduino' || feedStage === 'complete'
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-medium'
+                    : 'bg-white border-stone-200 text-gray-400'
+                }`}>
+                  <p className="font-semibold text-xs">1. HiveMQ Broker</p>
+                  <p className="text-[10px]">
+                    {feedStage === 'broker' ? 'Transmitting...' : 'PUBACK ✓'}
+                  </p>
+                </div>
+
+                {/* Stage 2: Reached Arduino */}
+                <div className={`p-2 rounded-lg border transition-all ${
+                  feedStage === 'arduino'
+                    ? 'bg-amber-50 border-amber-400 text-amber-800 font-bold animate-pulse'
+                    : feedStage === 'complete'
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-medium'
+                    : 'bg-white border-stone-200 text-gray-400'
+                }`}>
+                  <p className="font-semibold text-xs">2. Arduino Feeder</p>
+                  <p className="text-[10px]">
+                    {feedStage === 'arduino' ? 'Servo Operating...' : feedStage === 'complete' ? 'Reached ✓' : 'Awaiting...'}
+                  </p>
+                </div>
+
+                {/* Stage 3: Complete */}
+                <div className={`p-2 rounded-lg border transition-all ${
+                  feedStage === 'complete'
+                    ? 'bg-emerald-100 border-emerald-400 text-emerald-950 font-bold'
+                    : feedStage === 'error'
+                    ? 'bg-rose-50 border-rose-300 text-rose-800 font-bold'
+                    : 'bg-white border-stone-200 text-gray-400'
+                }`}>
+                  <p className="font-semibold text-xs">3. Bowl Status</p>
+                  <p className="text-[10px]">
+                    {feedStage === 'complete' ? 'Dispensed ✓' : feedStage === 'error' ? 'Timed Out ✗' : 'Pending...'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {feedResult && (
             <div
