@@ -4,17 +4,29 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Home, ClipboardList, Clock, Settings, Shield, LogOut, Menu, X, Cat, Cpu } from 'lucide-react';
+import { Home, ClipboardList, Clock, Settings, Shield, LogOut, Menu, X, Cat, Cpu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import api from '../lib/api';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [desktopSidebarOpen, setDesktopSidebarOpen] = useState<boolean>(() => {
+    const saved = localStorage.getItem('smartcat_desktop_sidebar');
+    return saved !== null ? saved === 'true' : true;
+  });
   const [showArch, setShowArch] = useState<boolean>(() => {
     const saved = localStorage.getItem('smartcat_show_arch');
     return saved !== null ? saved === 'true' : true;
   });
+
+  const toggleDesktopSidebar = () => {
+    setDesktopSidebarOpen((prev) => {
+      const next = !prev;
+      localStorage.setItem('smartcat_desktop_sidebar', String(next));
+      return next;
+    });
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -49,14 +61,27 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex bg-cat-50">
       {/* ── Sidebar (Desktop) ─────────────────────────────── */}
-      <aside className="hidden md:flex flex-col w-64 bg-white shadow-card border-r border-gray-100 fixed h-full z-10">
-        {/* Logo */}
-        <div className="flex items-center gap-3 px-6 py-5 border-b border-gray-100">
-          <Cat className="w-8 h-8 text-cat-500" />
-          <div>
-            <p className="font-bold text-gray-900 text-base leading-tight">feedy</p>
-            <p className="text-xs text-gray-400">IoT Dashboard</p>
+      <aside
+        className={`hidden md:flex flex-col w-64 bg-white shadow-card border-r border-gray-100 fixed h-full z-20 transition-transform duration-300 ease-in-out ${
+          desktopSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {/* Logo + Collapse Button */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <Cat className="w-8 h-8 text-cat-500" />
+            <div>
+              <p className="font-bold text-gray-900 text-base leading-tight">feedy</p>
+              <p className="text-xs text-gray-400">IoT Dashboard</p>
+            </div>
           </div>
+          <button
+            onClick={toggleDesktopSidebar}
+            className="text-gray-400 hover:text-gray-700 hover:bg-gray-100 p-1.5 rounded-lg transition-colors cursor-pointer"
+            title="Collapse sidebar for full-width view"
+          >
+            <PanelLeftClose className="w-5 h-5" />
+          </button>
         </div>
 
         {/* Navigation */}
@@ -102,13 +127,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       {/* ── Mobile Sidebar Overlay ────────────────────────── */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/40 z-20 md:hidden"
+          className="fixed inset-0 bg-black/40 z-30 md:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 w-64 bg-white shadow-xl z-30 flex flex-col
+        className={`fixed inset-y-0 left-0 w-64 bg-white shadow-xl z-40 flex flex-col
           transition-transform duration-300 md:hidden
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
@@ -147,19 +172,43 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* ── Main Content ──────────────────────────────────── */}
-      <div className="flex-1 md:ml-64 flex flex-col min-h-screen">
-        {/* Top bar (mobile) */}
-        <header className="md:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100 sticky top-0 z-10">
+      <div
+        className={`flex-1 flex flex-col min-h-screen transition-all duration-300 ease-in-out ${
+          desktopSidebarOpen ? 'md:ml-64' : 'md:ml-0'
+        }`}
+      >
+        {/* Top bar (Shown on Mobile OR when Desktop Sidebar is Collapsed) */}
+        <header
+          className={`flex items-center justify-between px-4 py-3 bg-white/95 backdrop-blur-xs border-b border-gray-100 sticky top-0 z-10 transition-all ${
+            desktopSidebarOpen ? 'md:hidden' : 'flex'
+          }`}
+        >
           <div className="flex items-center gap-3">
-            <button onClick={() => setSidebarOpen(true)} className="text-gray-600">
+            <button onClick={() => setSidebarOpen(true)} className="md:hidden text-gray-600">
               <Menu className="w-6 h-6" />
             </button>
-            <Cat className="w-6 h-6 text-cat-500" />
-            <span className="font-bold text-gray-900">feedy</span>
+            {!desktopSidebarOpen && (
+              <button
+                onClick={toggleDesktopSidebar}
+                className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl border border-stone-200 bg-white text-xs font-semibold text-gray-700 hover:bg-stone-50 shadow-2xs transition-all cursor-pointer"
+                title="Expand sidebar"
+              >
+                <PanelLeftOpen className="w-4 h-4 text-cat-600" />
+                <span>Show Sidebar</span>
+              </button>
+            )}
+            <div className="flex items-center gap-2">
+              <Cat className="w-6 h-6 text-cat-500" />
+              <span className="font-bold text-gray-900">feedy</span>
+            </div>
           </div>
         </header>
 
-        <main className="flex-1 p-4 md:p-8 max-w-5xl mx-auto w-full animate-fade-in">
+        <main
+          className={`flex-1 p-4 md:p-8 w-full animate-fade-in transition-all duration-300 ${
+            desktopSidebarOpen ? 'max-w-5xl mx-auto' : 'max-w-7xl mx-auto'
+          }`}
+        >
           {children}
         </main>
       </div>

@@ -10,7 +10,8 @@ import {
   Sparkles,
   Activity,
   CheckCircle2,
-  XCircle
+  XCircle,
+  Radio
 } from 'lucide-react';
 
 interface SubscriberDef {
@@ -303,6 +304,26 @@ export default function ArchitecturePage() {
           >
             ⚡ 1.5x Fast
           </button>
+        </div>
+      </div>
+
+      {/* ── What is MQTT? (Concise Definition for CN PPT) ─────────────────────────── */}
+      <div className="p-4 rounded-2xl bg-white border border-stone-200 shadow-2xs">
+        <div className="flex items-start gap-3.5">
+          <div className="w-9 h-9 rounded-xl bg-orange-50 border border-orange-200 flex items-center justify-center text-orange-600 shrink-0 mt-0.5">
+            <Radio className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-orange-700 bg-orange-100/60 px-2 py-0.5 rounded-md">
+                What is MQTT?
+              </span>
+              <span className="text-xs text-stone-400">Core Network Concept</span>
+            </div>
+            <p className="text-stone-800 text-sm leading-relaxed mt-1.5">
+              <strong className="text-gray-950 font-bold">MQTT (Message Queuing Telemetry Transport)</strong> is a lightweight, publish–subscribe network protocol designed for constrained IoT devices on low-bandwidth or unreliable networks. Operating over TCP/IP, clients decouple communication entirely by publishing and subscribing to topics through a central broker.
+            </p>
+          </div>
         </div>
       </div>
 
@@ -833,6 +854,73 @@ export default function ArchitecturePage() {
             <p className="text-gray-700">
               User 999 cannot trigger your feeder because their device subscribes to <code className="text-[10px] font-bold">.../user999/...</code> while yours listens on <code className="text-[10px] font-bold">.../geo123/...</code>.
             </p>
+          </div>
+        </div>
+
+        {/* ── 4. Advantages & Disadvantages of MQTT ───────────────────────────── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-stone-200">
+          {/* Advantages */}
+          <div className="p-5 rounded-2xl bg-white border border-emerald-200 shadow-2xs space-y-3">
+            <div className="flex items-center gap-2 pb-2.5 border-b border-emerald-100">
+              <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-4 h-4" />
+              </div>
+              <h3 className="font-bold text-gray-900 text-sm">Advantages of MQTT</h3>
+            </div>
+            <ul className="space-y-2.5 text-xs text-stone-700 leading-relaxed">
+              <li className="flex items-start gap-2">
+                <span className="font-bold text-emerald-600 shrink-0">✓</span>
+                <span><strong>Ultra-Lightweight Overhead:</strong> Minimal 2-byte header reduces network bandwidth and preserves low-power microcontroller battery life.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="font-bold text-emerald-600 shrink-0">✓</span>
+                <span><strong>Complete Decoupling:</strong> Publishers and subscribers never connect directly; decoupled in time, space, and synchronization.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="font-bold text-emerald-600 shrink-0">✓</span>
+                <span><strong>Configurable QoS Tiers:</strong> Supports QoS 0 (At most once), QoS 1 (At least once with PUBACK), and QoS 2 (Exactly once).</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="font-bold text-emerald-600 shrink-0">✓</span>
+                <span><strong>Last Will & Testament (LWT):</strong> The broker automatically publishes a disconnection alert if an IoT client loses connection unexpectedly.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="font-bold text-emerald-600 shrink-0">✓</span>
+                <span><strong>Scalable Many-to-Many Routing:</strong> A single event published to a topic fans out to multiple subscribers instantaneously.</span>
+              </li>
+            </ul>
+          </div>
+
+          {/* Disadvantages */}
+          <div className="p-5 rounded-2xl bg-white border border-rose-200 shadow-2xs space-y-3">
+            <div className="flex items-center gap-2 pb-2.5 border-b border-rose-100">
+              <div className="w-7 h-7 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                <XCircle className="w-4 h-4" />
+              </div>
+              <h3 className="font-bold text-gray-900 text-sm">Disadvantages of MQTT</h3>
+            </div>
+            <ul className="space-y-2.5 text-xs text-stone-700 leading-relaxed">
+              <li className="flex items-start gap-2">
+                <span className="font-bold text-rose-600 shrink-0">✗</span>
+                <span><strong>Central Broker Single Point of Failure:</strong> If the central broker fails without clustering, the entire communication network halts.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="font-bold text-rose-600 shrink-0">✗</span>
+                <span><strong>Persistent TCP Keep-Alive Overhead:</strong> Requires maintaining an active TCP connection; less suitable for sensors in ultra-deep sleep than UDP/CoAP.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="font-bold text-rose-600 shrink-0">✗</span>
+                <span><strong>No Native Payload Schema:</strong> Payloads are arbitrary binary blobs; message formatting (e.g., JSON validation) must be enforced in user code.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="font-bold text-rose-600 shrink-0">✗</span>
+                <span><strong>Broker Resource Intensity at Scale:</strong> Millions of concurrent open TLS sockets demand high broker memory and server capacity.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="font-bold text-rose-600 shrink-0">✗</span>
+                <span><strong>No Pull Architecture:</strong> Subscribers cannot query past historical messages directly from the broker without an external database.</span>
+              </li>
+            </ul>
           </div>
         </div>
       </div>

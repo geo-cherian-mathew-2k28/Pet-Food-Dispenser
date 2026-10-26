@@ -179,6 +179,19 @@ async function handleMessage(topic: string, payloadBuffer: Buffer): Promise<void
         }
         break;
 
+      case TOPICS.STATUS:
+        if (data.status) {
+          const isOnline = String(data.status).toLowerCase() === 'online';
+          await updateDeviceStatusRecord({
+            status: isOnline ? 'ONLINE' : 'OFFLINE',
+            lastHeartbeatAt: isOnline ? new Date() : undefined,
+            lastMessage: `Device reported ${data.status} at ${new Date().toISOString()}`,
+            updatedAt: new Date(),
+          });
+          logger.info(`Device status updated from topic: ${data.status}`);
+        }
+        break;
+
       case TOPICS.ERROR:
         logger.error(`Device error: ${String(data.message || data.error || payload).substring(0, 255)}`);
         break;
